@@ -1,8 +1,8 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import PieChartComponent from '../../components/PieChart';
+// import PieChartComponent from '../../components/PieChart';
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -42,14 +42,14 @@ const Categories = () => {
           <Text className="text-base text-gray-500">Total Spending</Text>
           <Text className="text-3xl font-bold mt-1">€{total.toFixed(1)}</Text>
           <View className="mt-4">
-            <PieChartComponent
+            {/* <PieChartComponent
               data={chartData}
               width={screenWidth * 0.7}
               height={180}
               accessor="population"
               absolute
               center={[10, 0]}
-            />
+            /> */}
           </View>
         </View>
 
@@ -64,7 +64,7 @@ const Categories = () => {
                 className="w-10 h-10 rounded-full items-center justify-center"
                 style={{ backgroundColor: item.color }}
               >
-                <Ionicons name={item.icon} size={20} color="white" />
+                {/* <Ionicons name={item.icon} size={20} color="white" /> */}
               </View>
               <View className="ml-3">
                 <Text className="text-base font-semibold">{item.name}</Text>

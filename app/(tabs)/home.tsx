@@ -1,15 +1,14 @@
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import React, { useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
-import { PieChart } from 'react-native-chart-kit';
-import { ThemeContext } from './_layout'
-import PieChartComponent from '../../components/PieChart';
-import { logout } from '../../lib/appwrite';
-import { useGlobalContext } from '../../context/GlobalProvider';
-import CustomButton from '../../components/CustomButton';
+import React, { useState } from 'react';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+// import { PieChart } from 'react-native-chart-kit';
 import { Link, useRouter } from 'expo-router';
+import CustomButton from '../../components/CustomButton';
+// import PieChartComponent from '../../components/PieChart';
+import { useGlobalContext } from '../../context/GlobalProvider';
+import { logout } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -71,7 +70,7 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
   </View>
 );
 
-const Home2 = () => {
+const Home = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const { darkMode, toggleDarkMode, logoutUser } = useGlobalContext();
   const router = useRouter();
@@ -202,7 +201,7 @@ const Home2 = () => {
           <Text className="text-xl font-bold">Categories</Text>
           <View className="flex-row mt-4 h-48">
             <View className="w-1/2 items-center justify-center">
-              <PieChartComponent
+              {/* <PieChartComponent
                 data={chartData}
                 width={150}
                 height={150}
@@ -210,7 +209,7 @@ const Home2 = () => {
                 absolute
                 center={[30, 0]}
                 showLegend={false}
-              />
+              /> */}
               <Text className="mt-1 font-bold pr-5">€1980.0</Text>
             </View>
             <View className="w-1/2 justify-between py-4">
@@ -292,4 +291,4 @@ const Home2 = () => {
   );
 };
 
-export default Home2;
+export default Home;

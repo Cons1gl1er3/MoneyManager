@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import React, { useState } from 'react';
+import { Image, Text, TouchableOpacity, View } from 'react-native';
 
 const ScanReceiptScreen = () => {
   const [image, setImage] = useState<string | null>(null);
