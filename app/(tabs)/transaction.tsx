@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
 
 interface Transaction {
   icon: keyof typeof Ionicons.glyphMap;
@@ -19,68 +20,69 @@ interface TransactionGroup {
   transactions: Transaction[];
 }
 
-const transactionsGroupedByDate: TransactionGroup[] = [
-  {
-    date: "2025-04-08",
-    total: -250,
-    transactions: [
-      {
-        icon: 'medical-outline',
-        color: '#8B5CF6',
-        title: 'Health',
-        amount: 250,
-        isExpense: true,
-        method: 'Cash',
-        date: '2023-11-16',
-      },
-    ],
-  },
-  {
-    date: "2025-04-07",
-    total: 4770,
-    transactions: [
-      {
-        icon: 'call-outline',
-        color: '#EC4899',
-        title: 'Entertainment',
-        amount: 500,
-        isExpense: true,
-        method: 'Cash',
-        date: '2023-11-15',
-      },
-      {
-        icon: 'game-controller-outline',
-        color: '#3B82F6',
-        title: 'Leisure',
-        amount: 580,
-        isExpense: true,
-        method: 'Cash',
-        date: '2023-11-15',
-      },
-      {
-        icon: 'wallet-outline',
-        color: '#22C55E',
-        title: 'Savings',
-        amount: 6500,
-        isExpense: false,
-        method: 'Cash',
-        date: '2023-11-15',
-      },
-      {
-        icon: 'shirt-outline',
-        color: '#F87171',
-        title: 'Clothing',
-        amount: 650,
-        isExpense: true,
-        method: 'Cash',
-        date: '2023-11-15',
-      },
-    ],
-  },
-];
+// const transactionsGroupedByDate: TransactionGroup[] = [
+//   {
+//     date: "2025-04-08",
+//     total: -250,
+//     transactions: [
+//       {
+//         icon: 'medical-outline',
+//         color: '#8B5CF6',
+//         title: 'Health',
+//         amount: 250,
+//         isExpense: true,
+//         method: 'Cash',
+//         date: '2023-11-16',
+//       },
+//     ],
+//   },
+//   {
+//     date: "2025-04-07",
+//     total: 4770,
+//     transactions: [
+//       {
+//         icon: 'call-outline',
+//         color: '#EC4899',
+//         title: 'Entertainment',
+//         amount: 500,
+//         isExpense: true,
+//         method: 'Cash',
+//         date: '2023-11-15',
+//       },
+//       {
+//         icon: 'game-controller-outline',
+//         color: '#3B82F6',
+//         title: 'Leisure',
+//         amount: 580,
+//         isExpense: true,
+//         method: 'Cash',
+//         date: '2023-11-15',
+//       },
+//       {
+//         icon: 'wallet-outline',
+//         color: '#22C55E',
+//         title: 'Savings',
+//         amount: 6500,
+//         isExpense: false,
+//         method: 'Cash',
+//         date: '2023-11-15',
+//       },
+//       {
+//         icon: 'shirt-outline',
+//         color: '#F87171',
+//         title: 'Clothing',
+//         amount: 650,
+//         isExpense: true,
+//         method: 'Cash',
+//         date: '2023-11-15',
+//       },
+//     ],
+//   },
+// ];
 
 const Transaction = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [transactionsGroupedByDate, setTransactionsGroupedByDate] = useState<TransactionGroup[]>([]);
 
   const formatDateHeader = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -102,8 +104,38 @@ const Transaction = () => {
     }
   
     setCurrentDate(newDate);
-    // Fetch data for the new month from your database here
+    fetchTransactions(newDate);
   };
+
+  // Function to fetch transactions and group them by date
+  const fetchTransactions = async (date: Date) => {
+    try {
+      const transactions = await getTransactions(date); // Fetch transactions for the selected month
+      const grouped = groupTransactionsByDate(transactions);
+      setTransactionsGroupedByDate(grouped);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  };
+
+  const groupTransactionsByDate = (transactions: Transaction[]): TransactionGroup[] => {
+    const grouped: { [key: string]: TransactionGroup } = {};
+
+    transactions.forEach((transaction) => {
+      const date = transaction.date.split('T')[0]; // Get date without time (ISO format)
+      if (!grouped[date]) {
+        grouped[date] = { date, total: 0, transactions: [] };
+      }
+      grouped[date].transactions.push(transaction);
+      grouped[date].total += transaction.isExpense ? -transaction.amount : transaction.amount;
+    });
+
+    return Object.values(grouped);
+  };
+
+  useEffect(() => {
+    fetchTransactions(currentDate); // Fetch transactions when the component mounts
+  }, [currentDate]);
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -135,6 +167,7 @@ const Transaction = () => {
           </View>
         </View>
 
+        {/* Render Transactions */}
         {transactionsGroupedByDate.map((group, index) => {
           const { day, month, year, weekday } = formatDateHeader(group.date);
           return (

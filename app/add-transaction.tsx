@@ -12,7 +12,7 @@ const AddTransaction = () => {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);  // State for selected account
-  const [selectedCategory, setSelectedCategory] = useState(''); // State for selected category
+  const [selectedCategory, setSelectedCategory] = useState(null); // State for selected category
   const [accounts, setAccounts] = useState([]);  // List of user accounts
   const [categories, setCategories] = useState([]);  // List of categories for dropdown
   const [selectedDate, setSelectedDate] = useState(new Date()); // For date picker
@@ -24,9 +24,17 @@ const AddTransaction = () => {
       try {
         const userAccounts = await getUserAccounts(); // Get accounts for the current user
         setAccounts(userAccounts);
+
+        if (userAccounts.length > 0) {
+          setSelectedAccount(userAccounts[0].$id); // Set the first account as default
+        }
         
         const systemCategories = await getCategories();
         setCategories(systemCategories);
+
+        if (systemCategories.length > 0) {
+          setSelectedCategory(systemCategories[0].$id); // Set the first account as default
+        }
       } catch (error) {
         console.error('Error fetching accounts and categories:', error);
       }
@@ -106,7 +114,7 @@ const AddTransaction = () => {
         }}
       >
         {accounts.map((account, index) => (
-          <Picker.Item key={index} label={account.name} value={account.account_id} />
+          <Picker.Item key={index} label={account.name} value={account.$id} />
         ))}
       </Picker>
 
@@ -127,7 +135,7 @@ const AddTransaction = () => {
         }}
       >
         {categories.map((category, index) => (
-          <Picker.Item key={index} label={category.name} value={category.category_id} />
+          <Picker.Item key={index} label={category.name} value={category.$id} />
         ))}
       </Picker>
 
