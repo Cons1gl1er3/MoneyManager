@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker'; // Add DateTimePicker for user to select a date
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Picker, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { getUserAccounts, logTransaction } from '../lib/appwrite'; // Import your logTransaction function
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite';
 
 const AddTransaction = () => {
   const router = useRouter();
@@ -24,12 +25,8 @@ const AddTransaction = () => {
         const userAccounts = await getUserAccounts(); // Get accounts for the current user
         setAccounts(userAccounts);
         
-        // Sample categories - you might fetch these from your categories collection
-        setCategories([
-          { name: 'Food', category_id: 'cat_food' },
-          { name: 'Transport', category_id: 'cat_transport' },
-          { name: 'Entertainment', category_id: 'cat_entertainment' },
-        ]);
+        const systemCategories = await getCategories();
+        setCategories(systemCategories);
       } catch (error) {
         console.error('Error fetching accounts and categories:', error);
       }
@@ -67,7 +64,7 @@ const AddTransaction = () => {
       <Text className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Add Transaction</Text>
 
       {/* Amount Input */}
-      <Text className="text-gray-700 dark:text-gray-300 mb-2">Amount</Text>
+      <Text className="text-gray-700 dark:text-gray-400 mb-2">Amount</Text>
       <TextInput
         keyboardType="numeric"
         value={amount}
@@ -93,11 +90,20 @@ const AddTransaction = () => {
       </View>
 
       {/* Account Selection */}
-      <Text className="text-gray-700 dark:text-gray-300 mb-2">Select Account</Text>
+      <Text className="text-gray-700 dark:text-gray-400 mb-2">Select Account</Text>
       <Picker
         selectedValue={selectedAccount}
         onValueChange={(itemValue) => setSelectedAccount(itemValue)}
-        style={{ marginBottom: 20 }}
+        style={{
+          marginBottom: 20,
+          borderWidth: 1,
+          borderColor: '#4b5563', // Light mode border color
+          borderRadius: 12,
+          paddingHorizontal: 8,
+          backgroundColor: '#1F2937', // Background color
+          color: '#FFFFFF', // Text color (light mode)
+          fontSize: 16,
+        }}
       >
         {accounts.map((account, index) => (
           <Picker.Item key={index} label={account.name} value={account.account_id} />
@@ -105,11 +111,20 @@ const AddTransaction = () => {
       </Picker>
 
       {/* Category Selection */}
-      <Text className="text-gray-700 dark:text-gray-300 mb-2">Select Category</Text>
+      <Text className="text-gray-700 dark:text-gray-400 mb-2">Select Category</Text>
       <Picker
         selectedValue={selectedCategory}
         onValueChange={(itemValue) => setSelectedCategory(itemValue)}
-        style={{ marginBottom: 20 }}
+        style={{
+          marginBottom: 20,
+          borderWidth: 1,
+          borderColor: '#4b5563', // Light mode border color
+          borderRadius: 12,
+          paddingHorizontal: 8,
+          backgroundColor: '#1F2937', // Background color
+          color: '#FFFFFF', // Text color (light mode)
+          fontSize: 16,
+        }}
       >
         {categories.map((category, index) => (
           <Picker.Item key={index} label={category.name} value={category.category_id} />
@@ -117,7 +132,7 @@ const AddTransaction = () => {
       </Picker>
 
       {/* Note Input */}
-      <Text className="text-gray-700 dark:text-gray-300 mb-2">Note (optional)</Text>
+      <Text className="text-gray-700 dark:text-gray-400 mb-2">Note (optional)</Text>
       <TextInput
         value={note}
         onChangeText={setNote}
@@ -126,7 +141,7 @@ const AddTransaction = () => {
       />
 
       {/* Date Selection */}
-      <Text className="text-gray-700 dark:text-gray-300 mb-2">Transaction Date</Text>
+      <Text className="text-gray-700 dark:text-gray-400 mb-2">Transaction Date</Text>
       <TouchableOpacity
         onPress={() => setShowDatePicker(true)}
         className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-4"
