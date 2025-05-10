@@ -8,7 +8,7 @@ import { Link, useFocusEffect, useRouter } from 'expo-router';
 import CustomButton from '../../components/CustomButton';
 // import PieChartComponent from '../../components/PieChart';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { getCurrentUser, getTransactions, logout } from '../../lib/appwrite';
+import { getCurrentUser, getTransactions, getUserAccounts, logout } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -111,6 +111,7 @@ const Home = () => {
   const [expenseTotal, setExpenseTotal] = useState(0);
   const { darkMode, toggleDarkMode, logoutUser } = useGlobalContext();
   const [userID, setUserID] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -185,6 +186,28 @@ const Home = () => {
       .replace('₫', 'VNĐ');
   };
 
+  const fetchAccounts = async () => {
+    try {
+      if (userID) {
+        const userAccounts = await getUserAccounts();
+        setAccounts(userAccounts);
+      }
+    } catch (error) {
+      console.error('Error fetching accounts:', error);
+    }
+  };
+
+  // Map account names to icons
+  const getAccountIcon = (name: string): string => {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('wallet')) return 'wallet-outline';
+    if (lowerName.includes('cash')) return 'cash-outline';
+    if (lowerName.includes('card') || lowerName.includes('credit')) return 'card-outline';
+    if (lowerName.includes('savings')) return 'piggy-bank-outline';
+    if (lowerName.includes('checking')) return 'bank-outline';
+    return 'wallet-outline'; // Default icon
+  };
+
   useEffect(() => {
     fetchUserID();
   }, []);
@@ -204,6 +227,7 @@ const Home = () => {
     useCallback(() => {
       if (userID) {
         fetchTransactions();
+        fetchAccounts();
       }
     }, [userID])
   );
@@ -274,36 +298,27 @@ const Home = () => {
         <View className="mt-6 px-4">
           <View className="flex-row justify-between items-center">
             <Text className="text-xl font-bold">Account</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/add-account')}>
               <Text className="text-blue-600">VIEW ALL</Text>
             </TouchableOpacity>
           </View>
-          
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4">
-            <View className="flex-row space-x-4 w-full">
-              {/* Example Account Cards */}
-              <View className="w-40 bg-green-50 p-4 rounded-lg mr-5">
-                <View className="flex-row justify-between items-center">
-                  <Text className="text-lg font-medium">E-Wallet</Text>
-                  <Ionicons name="wallet-outline" size={24} color="#000" />
-                </View>
-                <Text className="text-xl font-bold mt-2 text-green-600">€4520.0</Text>
-              </View>
-              <View className="w-40 bg-green-50 p-4 rounded-lg mr-5">
-                <View className="flex-row justify-between items-center">
-                  <Text className="text-lg font-medium">Cash</Text>
-                  <Ionicons name="cash-outline" size={24} color="#000" />
-                </View>
-                <Text className="text-xl font-bold mt-2 text-green-600">€4520.0</Text>
-              </View>
-              <View className="w-40 bg-green-50 p-4 rounded-lg mr-5">
-                <View className="flex-row justify-between items-center">
-                  <Text className="text-lg font-medium">Card-xxx</Text>
-                  <Ionicons name="card-outline" size={24} color="#000" />
-                </View>
-                <Text className="text-xl font-bold mt-2 text-green-600">€0.0</Text>
-              </View>
-              {/* Add more account cards as needed */}
+            <View className="flex-row space-x-4">
+              {accounts.length > 0 ? (
+                accounts.map(account => (
+                  <View key={account.$id} className="w-40 bg-green-50 p-4 rounded-lg mr-5">
+                    <View className="flex-row justify-between items-center">
+                      <Text className="text-lg font-medium">{account.name}</Text>
+                      <Ionicons name={getAccountIcon(account.name)} size={24} color="#000" />
+                    </View>
+                    <Text className="text-xl font-bold mt-2 text-green-600">
+                      {formatVND(account.balance)}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text className="text-gray-500 text-lg">No accounts found.</Text>
+              )}
             </View>
           </ScrollView>
         </View>
