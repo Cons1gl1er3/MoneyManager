@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser, getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
@@ -27,6 +27,7 @@ interface User {
 
 interface Transaction {
   $id: string;  // The transaction ID
+  name: string;
   account_id: Account;  // Account details associated with the transaction
   amount: number;  // The transaction amount
   category_id: Category;  // The category of the transaction
@@ -47,6 +48,7 @@ const Transaction = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactionsGroupedByDate, setTransactionsGroupedByDate] = useState<TransactionGroup[]>([]);
   const [userID, setUserID] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const formatDateHeader = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -68,7 +70,6 @@ const Transaction = () => {
     }
   
     setCurrentDate(newDate);
-    fetchTransactions(newDate);
   };
 
   const fetchUserID = async () => {
@@ -82,19 +83,30 @@ const Transaction = () => {
     }
   };
 
-  // Function to fetch transactions and group them by date
-  const fetchTransactions = async (date: Date) => {
+  // Function to fetch transactions
+  const fetchTransactions = async () => {
     try {
       if (userID) {
-        const transactions = await getTransactions(userID); // Fetch transactions for the selected user
-        const grouped = groupTransactionsByDate(transactions);
-        setTransactionsGroupedByDate(grouped);
+        const allTransactions = await getTransactions(userID); // Fetch all transactions for the user
+        setTransactions(allTransactions); // Store all transactions
       }
     } catch (error) {
       console.error('Error fetching transactions:', error);
     }
   };
 
+  // Function to filter transactions by selected month
+  const filterTransactionsByMonth = (allTransactions: Transaction[], date: Date): Transaction[] => {
+    const month = date.getMonth();
+    const year = date.getFullYear();
+    
+    return allTransactions.filter(transaction => {
+      const txDate = new Date(transaction.transaction_date);
+      return txDate.getMonth() === month && txDate.getFullYear() === year;
+    });
+  };
+
+  // Function to group transactions by date
   const groupTransactionsByDate = (transactions: Transaction[]): TransactionGroup[] => {
     const grouped: { [key: string]: TransactionGroup } = {};
 
@@ -107,7 +119,7 @@ const Transaction = () => {
       grouped[date].total += transaction.is_income ? transaction.amount : -transaction.amount;
     });
 
-    return Object.values(grouped);
+    return Object.values(grouped).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
   useEffect(() => {
@@ -116,9 +128,23 @@ const Transaction = () => {
 
   useEffect(() => {
     if (userID) {
-      fetchTransactions(currentDate); // Fetch transactions after userID is available
+      fetchTransactions(); // Fetch transactions after userID is available
     }
-  }, [userID, currentDate]);
+  }, [userID]);
+
+  useEffect(() => {
+    const filtered = filterTransactionsByMonth(transactions, currentDate);
+    const grouped = groupTransactionsByDate(filtered);
+    setTransactionsGroupedByDate(grouped);
+  }, [transactions, currentDate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userID) {
+        fetchTransactions();
+      }
+    }, [userID])
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -151,72 +177,80 @@ const Transaction = () => {
         </View>
 
         {/* Render Transactions */}
-        {transactionsGroupedByDate.map((group, index) => {
-          const { day, month, year, weekday } = formatDateHeader(group.date);
-          return (
-            <View key={index} className="mb-6 px-3">
-              {/* Date Header */}
-              <View className="flex-row justify-between items-center border-b border-gray-200 pb-1 mb-3">
-                <View>
-                  <View className='flex-row items-center'>
-                    <View className='w-10 h-10 items-center justify-center mr-2'>
-                      <Text className="font-bold text-2xl">{day}</Text>
-                    </View>
-                    <View className='flex-col items-start'>
-                      <Text className="text-xs text-black font-semibold">{month} {year}</Text>
-                      <Text className="text-xs text-black font-semibold">{weekday}</Text>
+        {transactionsGroupedByDate.length > 0 ? (
+          transactionsGroupedByDate.map((group, index) => {
+            const { day, month, year, weekday } = formatDateHeader(group.date);
+            return (
+              <View key={index} className="mb-6 px-3">
+                {/* Date Header */}
+                <View className="flex-row justify-between items-center border-b border-gray-200 pb-1 mb-3">
+                  <View>
+                    <View className='flex-row items-center'>
+                      <View className='w-10 h-10 items-center justify-center mr-2'>
+                        <Text className="font-bold text-2xl">{day}</Text>
+                      </View>
+                      <View className='flex-col items-start'>
+                        <Text className="text-xs text-black font-semibold">{month} {year}</Text>
+                        <Text className="text-xs text-black font-semibold">{weekday}</Text>
+                      </View>
                     </View>
                   </View>
+                  <View className='mr-3'>
+                    <Text className={`text-base font-bold ${group.total >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {group.total >= 0 ? '+' : '-'}
+                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Math.abs(group.total)).replace('₫', 'VNĐ')}
+                    </Text>
+                  </View>
                 </View>
-                <View className='mr-3'>
-                  <Text className={`text-base font-bold ${group.total >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {group.total >= 0 ? '+' : '-'}€{Math.abs(group.total).toFixed(1)}
-                  </Text>
-                </View>
-              </View>
 
-              {/* Transactions */}
-              <View className="space-y-3">
-                {group.transactions.map((item, idx) => (
-                  <View key={idx} className="flex-row justify-between items-center bg-gray-50 p-3 rounded-lg">
-                    <View className="flex-row items-center">
-                      {/* Placeholder icon with default color since no icon/color in data */}
-                      <View
-                        style={{ backgroundColor: item.category_id.color }}
-                        className="w-10 h-10 rounded-full items-center justify-center"
-                      >
-                        <Ionicons
-                          name={item.category_id.icon}
-                          size={20}
-                          color="white"
-                        />
-                      </View>
-                      <View className="ml-3">
-                        <Text className="font-medium">{item.category_id.name}</Text>
-                        <View className="flex-row items-center mt-1">
-                          <Ionicons name="list-circle-outline" size={14} color="#22C55E" />
-                          <Text className="text-xs text-gray-600 ml-1">{item.account_id.name}</Text>
+                {/* Transactions */}
+                <View className="space-y-3">
+                  {group.transactions.map((item, idx) => (
+                    <View key={idx} className="flex-row justify-between items-center bg-gray-50 p-3 rounded-lg">
+                      <View className="flex-row items-center">
+                        {/* Category icon */}
+                        <View
+                          style={{ backgroundColor: item.category_id.color }}
+                          className="w-10 h-10 rounded-full items-center justify-center"
+                        >
+                          <Ionicons
+                            name={item.category_id.icon}
+                            size={20}
+                            color="white"
+                          />
+                        </View>
+                        <View className="ml-3">
+                          <Text className="font-medium">{item.name}</Text>
+                          <View className="flex-row items-center mt-1">
+                            <Ionicons name="list-circle-outline" size={14} color="#22C55E" />
+                            <Text className="text-xs text-gray-600 ml-1">{item.account_id.name}</Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                    <View className="items-end">
+                      <View className="items-end">
                       <Text className={`font-bold text-base ${item.is_income ? 'text-green-500' : 'text-red-500'}`}>
-                        {item.is_income ? '+' : '-'}€{item.amount.toFixed(1)}
+                        {item.is_income ? '+' : '-'}
+                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.amount).replace('₫', 'VNĐ')}
                       </Text>
-                      <Text className="text-xs text-gray-400 mt-1">{item.transaction_date.split('T')[0]}</Text>
+                        <Text className="text-xs text-gray-400 mt-1">{item.transaction_date.split('T')[0]}</Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  ))}
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })
+        ) : (
+          <View className="flex-1 items-center justify-center p-4">
+            <Text className="text-gray-500 text-lg">No transactions for this month.</Text>
+          </View>
+        )}
       </ScrollView>
       <TouchableOpacity
-          onPress={() => router.push('/add-transaction')} // Make sure this screen exists
-          className="absolute bottom-6 right-6 bg-blue-600 p-4 rounded-full shadow-xl"
-        >
-          <Ionicons name="add" size={28} color="white" />
+        onPress={() => router.push('/add-transaction')}
+        className="absolute bottom-6 right-6 bg-blue-600 p-4 rounded-full shadow-xl"
+      >
+        <Ionicons name="add" size={28} color="white" />
       </TouchableOpacity>
     </SafeAreaView>
   );

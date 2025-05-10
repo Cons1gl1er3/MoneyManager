@@ -10,6 +10,7 @@ import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite'
 
 const AddTransaction = () => {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -59,7 +60,7 @@ const AddTransaction = () => {
       const isIncome = type === 'income'; // Determine if it's income or expense
       const transactionDate = selectedDate.toISOString(); // Use the selected date
 
-      const transaction = await logTransaction(accountID, categoryID, parseFloat(amount), isIncome, note, transactionDate);
+      const transaction = await logTransaction(name, accountID, categoryID, parseFloat(amount), isIncome, note, transactionDate);
 
       // Navigate back after submitting
       router.back();
@@ -74,12 +75,20 @@ const AddTransaction = () => {
 
   return (
     <SafeAreaView className="flex-1 h-full">
-    <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
     <View className="flex-1 px-4 pt-12 bg-white dark:bg-black">
       <TouchableOpacity onPress={() => router.back()} className="absolute top-5 left-4 p-2 bg-gray-300 rounded-full">
         <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>
       <Text className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Add Transaction</Text>
+
+      {/* Transaction Name Input */}
+      <Text className="text-gray-700 dark:text-gray-400 mb-2">Transaction Name</Text>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Enter transaction name"
+          className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-6 text-base text-black dark:text-white"
+        />
 
       {/* Amount Input */}
       <Text className="text-gray-700 dark:text-gray-400 mb-2">Amount</Text>
@@ -162,7 +171,7 @@ const AddTransaction = () => {
       <Text className="text-gray-700 dark:text-gray-400 mb-2">Transaction Date</Text>
       <TouchableOpacity
         onPress={() => setShowDatePicker(true)}
-        className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-4"
+        className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-7"
       >
         <Text className="text-gray-500">{selectedDate.toLocaleDateString()}</Text>
       </TouchableOpacity>
@@ -187,6 +196,7 @@ const AddTransaction = () => {
         <Text className="text-white text-base font-semibold ml-2">Save Transaction</Text>
       </TouchableOpacity>
     </View>
+    <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
     </SafeAreaView>
   );
 };

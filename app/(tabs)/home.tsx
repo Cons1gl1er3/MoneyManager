@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
-import { Link, useRouter } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import CustomButton from '../../components/CustomButton';
 // import PieChartComponent from '../../components/PieChart';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { logout } from '../../lib/appwrite';
+import { getCurrentUser, getTransactions, logout } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -44,6 +44,39 @@ interface TransactionItemProps {
   isExpense: boolean;
 }
 
+interface Account {
+  $id: string;
+  name: string;
+  balance: number;
+}
+
+interface Category {
+  $id: string;
+  name: string;
+  icon: string;
+  color: string;
+}
+
+interface User {
+  $id: string;
+  avatar: string;
+  email: string;
+  username: string;
+}
+
+interface Transaction {
+  $id: string;
+  name: string;
+  account_id: Account;
+  amount: number;
+  category_id: Category;
+  is_income: boolean;
+  note: string;
+  recurring_id: string;
+  transaction_date: string;
+  user_id: User;
+}
+
 const CategoryItem = ({ icon, color, title, amount }: CategoryItemProps) => (
   <View className="flex-row justify-between items-center">
     <View className="flex-row items-center">
@@ -71,9 +104,13 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
 );
 
 const Home = () => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const { darkMode, toggleDarkMode, logoutUser } = useGlobalContext();
   const router = useRouter();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [incomeTotal, setIncomeTotal] = useState(0);
+  const [expenseTotal, setExpenseTotal] = useState(0);
+  const { darkMode, toggleDarkMode, logoutUser } = useGlobalContext();
+  const [userID, setUserID] = useState<string | null>(null);
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -86,8 +123,7 @@ const Home = () => {
     }
   
     setCurrentDate(newDate);
-    // Fetch data for the new month from your database here
-  };
+};
 
   const categoryData = [
     { name: 'Clothing', amount: 650.0, color: '#9333EA', icon: 'shirt-outline', legendFontColor: '#7F7F7F' },
@@ -95,6 +131,82 @@ const Home = () => {
     { name: 'Entertainment', amount: 500.0, color: '#EC4899', icon: 'film-outline', legendFontColor: '#7F7F7F' },
     { name: 'Health', amount: 250.0, color: '#6366F1', icon: 'medical-outline', legendFontColor: '#7F7F7F' },
   ];
+
+  const fetchUserID = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        setUserID(user.$id);
+      }
+    } catch (error) {
+      console.error('Error fetching user ID:', error);
+    }
+  };
+
+  const fetchTransactions = async () => {
+    try {
+      if (userID) {
+        const allTransactions = await getTransactions(userID);
+        setTransactions(allTransactions);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  };
+
+  const filterTransactionsByMonth = (allTransactions: Transaction[], date: Date): Transaction[] => {
+    const month = date.getMonth();
+    const year = date.getFullYear();
+
+    return allTransactions.filter(transaction => {
+      const txDate = new Date(transaction.transaction_date);
+      return txDate.getMonth() === month && txDate.getFullYear() === year;
+    });
+  };
+
+  const calculateTotals = (filteredTransactions: Transaction[]) => {
+    const income = filteredTransactions
+      .filter(tx => tx.is_income)
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    const expense = filteredTransactions
+      .filter(tx => !tx.is_income)
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    setIncomeTotal(income);
+    setExpenseTotal(expense);
+  };
+
+  const formatVND = (amount: number): string => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    })
+      .format(amount)
+      .replace('₫', 'VNĐ');
+  };
+
+  useEffect(() => {
+    fetchUserID();
+  }, []);
+
+  useEffect(() => {
+    if (userID) {
+      fetchTransactions();
+    }
+  }, [userID]);
+
+  useEffect(() => {
+    const filtered = filterTransactionsByMonth(transactions, currentDate);
+    calculateTotals(filtered);
+  }, [transactions, currentDate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userID) {
+        fetchTransactions();
+      }
+    }, [userID])
+  );
 
   // Format the data for the pie chart
   const chartData = categoryData.map(item => ({
@@ -150,11 +262,11 @@ const Home = () => {
         <View className="flex-row px-4 mt-4 space-x-4">
           <View className="flex-1 bg-green-50 p-4 rounded-lg mr-3">
             <Text className="text-lg font-medium">Income</Text>
-            <Text className="text-xl font-bold mt-1">€6500.0</Text>
+            <Text className="text-md font-bold mt-1">{formatVND(incomeTotal)}</Text>
           </View>
           <View className="flex-1 bg-red-50 p-4 rounded-lg ml-3">
             <Text className="text-lg font-medium">Spending</Text>
-            <Text className="text-xl font-bold mt-1">€1980.0</Text>
+            <Text className="text-md font-bold mt-1">{formatVND(expenseTotal)}</Text>
           </View>
         </View>
 
