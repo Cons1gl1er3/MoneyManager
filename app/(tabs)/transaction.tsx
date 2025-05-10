@@ -1,17 +1,40 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
+import { getCurrentUser, getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
+
+interface Account {
+  $id: string;  // The account ID
+  name: string;
+  balance: number;
+}
+
+interface Category {
+  $id: string;  // The category ID
+  name: string;
+  icon: string;
+  color: string;
+}
+
+interface User {
+  $id: string;  // The user ID
+  avatar: string;
+  email: string;
+  username: string;
+}
 
 interface Transaction {
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  title: string;
-  amount: number;
-  isExpense: boolean;
-  method: string;
-  date: string; // ISO string
+  $id: string;  // The transaction ID
+  account_id: Account;  // Account details associated with the transaction
+  amount: number;  // The transaction amount
+  category_id: Category;  // The category of the transaction
+  is_income: boolean;  // Whether it's an income or expense
+  note: string;  // Any notes associated with the transaction
+  recurring_id: string;  // If it's a recurring transaction
+  transaction_date: string;  // The date of the transaction
+  user_id: User;  // The user associated with the transaction
 }
 
 interface TransactionGroup {
@@ -20,69 +43,10 @@ interface TransactionGroup {
   transactions: Transaction[];
 }
 
-// const transactionsGroupedByDate: TransactionGroup[] = [
-//   {
-//     date: "2025-04-08",
-//     total: -250,
-//     transactions: [
-//       {
-//         icon: 'medical-outline',
-//         color: '#8B5CF6',
-//         title: 'Health',
-//         amount: 250,
-//         isExpense: true,
-//         method: 'Cash',
-//         date: '2023-11-16',
-//       },
-//     ],
-//   },
-//   {
-//     date: "2025-04-07",
-//     total: 4770,
-//     transactions: [
-//       {
-//         icon: 'call-outline',
-//         color: '#EC4899',
-//         title: 'Entertainment',
-//         amount: 500,
-//         isExpense: true,
-//         method: 'Cash',
-//         date: '2023-11-15',
-//       },
-//       {
-//         icon: 'game-controller-outline',
-//         color: '#3B82F6',
-//         title: 'Leisure',
-//         amount: 580,
-//         isExpense: true,
-//         method: 'Cash',
-//         date: '2023-11-15',
-//       },
-//       {
-//         icon: 'wallet-outline',
-//         color: '#22C55E',
-//         title: 'Savings',
-//         amount: 6500,
-//         isExpense: false,
-//         method: 'Cash',
-//         date: '2023-11-15',
-//       },
-//       {
-//         icon: 'shirt-outline',
-//         color: '#F87171',
-//         title: 'Clothing',
-//         amount: 650,
-//         isExpense: true,
-//         method: 'Cash',
-//         date: '2023-11-15',
-//       },
-//     ],
-//   },
-// ];
-
 const Transaction = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactionsGroupedByDate, setTransactionsGroupedByDate] = useState<TransactionGroup[]>([]);
+  const [userID, setUserID] = useState<string | null>(null);
 
   const formatDateHeader = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -107,12 +71,25 @@ const Transaction = () => {
     fetchTransactions(newDate);
   };
 
+  const fetchUserID = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        setUserID(user.$id); // Set the user ID
+      }
+    } catch (error) {
+      console.error('Error fetching user ID:', error);
+    }
+  };
+
   // Function to fetch transactions and group them by date
   const fetchTransactions = async (date: Date) => {
     try {
-      const transactions = await getTransactions(date); // Fetch transactions for the selected month
-      const grouped = groupTransactionsByDate(transactions);
-      setTransactionsGroupedByDate(grouped);
+      if (userID) {
+        const transactions = await getTransactions(userID); // Fetch transactions for the selected user
+        const grouped = groupTransactionsByDate(transactions);
+        setTransactionsGroupedByDate(grouped);
+      }
     } catch (error) {
       console.error('Error fetching transactions:', error);
     }
@@ -122,20 +99,26 @@ const Transaction = () => {
     const grouped: { [key: string]: TransactionGroup } = {};
 
     transactions.forEach((transaction) => {
-      const date = transaction.date.split('T')[0]; // Get date without time (ISO format)
+      const date = transaction.transaction_date.split('T')[0]; // Get date without time (ISO format)
       if (!grouped[date]) {
         grouped[date] = { date, total: 0, transactions: [] };
       }
       grouped[date].transactions.push(transaction);
-      grouped[date].total += transaction.isExpense ? -transaction.amount : transaction.amount;
+      grouped[date].total += transaction.is_income ? transaction.amount : -transaction.amount;
     });
 
     return Object.values(grouped);
   };
 
   useEffect(() => {
-    fetchTransactions(currentDate); // Fetch transactions when the component mounts
-  }, [currentDate]);
+    fetchUserID(); // Fetch user ID when the component mounts
+  }, []);
+
+  useEffect(() => {
+    if (userID) {
+      fetchTransactions(currentDate); // Fetch transactions after userID is available
+    }
+  }, [userID, currentDate]);
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -197,22 +180,30 @@ const Transaction = () => {
                 {group.transactions.map((item, idx) => (
                   <View key={idx} className="flex-row justify-between items-center bg-gray-50 p-3 rounded-lg">
                     <View className="flex-row items-center">
-                      <View style={{ backgroundColor: item.color }} className="w-10 h-10 rounded-full items-center justify-center">
-                        <Ionicons name={item.icon} size={20} color="white" />
+                      {/* Placeholder icon with default color since no icon/color in data */}
+                      <View
+                        style={{ backgroundColor: item.category_id.color }}
+                        className="w-10 h-10 rounded-full items-center justify-center"
+                      >
+                        <Ionicons
+                          name={item.category_id.icon}
+                          size={20}
+                          color="white"
+                        />
                       </View>
                       <View className="ml-3">
-                        <Text className="font-medium">{item.title}</Text>
+                        <Text className="font-medium">{item.category_id.name}</Text>
                         <View className="flex-row items-center mt-1">
-                          <Ionicons name="cash-outline" size={14} color="#22C55E" />
-                          <Text className="text-xs text-green-500 ml-1">{item.method}</Text>
+                          <Ionicons name="list-circle-outline" size={14} color="#22C55E" />
+                          <Text className="text-xs text-gray-600 ml-1">{item.account_id.name}</Text>
                         </View>
                       </View>
                     </View>
                     <View className="items-end">
-                      <Text className={`font-bold text-base ${item.isExpense ? 'text-red-500' : 'text-green-500'}`}>
-                        {item.isExpense ? '-' : '+'}€{item.amount.toFixed(1)}
+                      <Text className={`font-bold text-base ${item.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                        {item.is_income ? '+' : '-'}€{item.amount.toFixed(1)}
                       </Text>
-                      <Text className="text-xs text-gray-400 mt-1">{item.date}</Text>
+                      <Text className="text-xs text-gray-400 mt-1">{item.transaction_date.split('T')[0]}</Text>
                     </View>
                   </View>
                 ))}
@@ -221,6 +212,12 @@ const Transaction = () => {
           );
         })}
       </ScrollView>
+      <TouchableOpacity
+          onPress={() => router.push('/add-transaction')} // Make sure this screen exists
+          className="absolute bottom-6 right-6 bg-blue-600 p-4 rounded-full shadow-xl"
+        >
+          <Ionicons name="add" size={28} color="white" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 };

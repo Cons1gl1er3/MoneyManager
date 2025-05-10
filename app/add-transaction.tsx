@@ -2,8 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
-import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite';
 
 const AddTransaction = () => {
@@ -67,8 +69,16 @@ const AddTransaction = () => {
     }
   };
 
+  const theme = useColorScheme();
+  const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
+
   return (
+    <SafeAreaView className="flex-1 h-full">
+    <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
     <View className="flex-1 px-4 pt-12 bg-white dark:bg-black">
+      <TouchableOpacity onPress={() => router.back()} className="absolute top-5 left-4 p-2 bg-gray-300 rounded-full">
+        <Ionicons name="arrow-back" size={24} color="#000" />
+      </TouchableOpacity>
       <Text className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Add Transaction</Text>
 
       {/* Amount Input */}
@@ -177,6 +187,7 @@ const AddTransaction = () => {
         <Text className="text-white text-base font-semibold ml-2">Save Transaction</Text>
       </TouchableOpacity>
     </View>
+    </SafeAreaView>
   );
 };
 

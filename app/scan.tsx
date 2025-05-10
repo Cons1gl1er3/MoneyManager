@@ -1,9 +1,13 @@
 import * as ImagePicker from 'expo-image-picker';
+import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const ScanReceiptScreen = () => {
   const [image, setImage] = useState<string | null>(null);
+  const theme = useColorScheme();
+  const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
 
   const openCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -24,6 +28,7 @@ const ScanReceiptScreen = () => {
   };
 
   return (
+    <SafeAreaView className="flex-1 h-full">
     <View className="flex-1 items-center justify-center bg-white dark:bg-black px-4">
       {image ? (
         <Image source={{ uri: image }} className="w-64 h-64 rounded-xl mb-6" />
@@ -40,6 +45,8 @@ const ScanReceiptScreen = () => {
         <Text className="text-white font-semibold text-base">Open Camera</Text>
       </TouchableOpacity>
     </View>
+    <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
+    </SafeAreaView>
   );
 };
 
