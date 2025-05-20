@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
 import { Image, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
@@ -8,6 +9,7 @@ const ScanReceiptScreen = () => {
   const [image, setImage] = useState<string | null>(null);
   const theme = useColorScheme();
   const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
+  const router = useRouter();
 
   const openCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -27,6 +29,12 @@ const ScanReceiptScreen = () => {
     }
   };
 
+  const handleConfirm = () => {
+    if (image) {
+      router.push('/receipt-log-confirmation');
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 h-full">
     <View className="flex-1 items-center justify-center bg-white dark:bg-black px-4">
@@ -40,10 +48,21 @@ const ScanReceiptScreen = () => {
 
       <TouchableOpacity
         onPress={openCamera}
-        className="bg-blue-600 px-6 py-3 rounded-xl shadow-md"
+        className="bg-blue-600 px-6 py-3 rounded-xl shadow-md mb-4"
       >
-        <Text className="text-white font-semibold text-base">Open Camera</Text>
+        <Text className="text-white font-semibold text-base">
+          {image ? 'Retake Photo' : 'Open Camera'}
+        </Text>
       </TouchableOpacity>
+
+      {image && (
+        <TouchableOpacity
+          onPress={handleConfirm}
+          className="bg-green-600 px-6 py-3 rounded-xl shadow-md"
+        >
+          <Text className="text-white font-semibold text-base">Confirm</Text>
+        </TouchableOpacity>
+      )}
     </View>
     <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
     </SafeAreaView>

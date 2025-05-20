@@ -1,0 +1,31 @@
+{
+  "transactions": [
+    {
+      "name": "Grocery Shopping",
+      "amount": 85000,
+      "type": "expense",
+      "accountName": "Bank",
+      "categoryName": "Ăn uống",
+      "date": "2025-05-20T10:30:00Z",
+      "note": "Weekly groceries from Walmart"
+    },
+    {
+      "name": "Gas Station",
+      "amount": 45000,
+      "type": "expense",
+      "accountName": "Bank",
+      "categoryName": "Đi lại",
+      "date": "2025-05-20T11:15:00Z",
+      "note": "Gas fill-up"
+    },
+    {
+      "name": "Coffee Shop",
+      "amount": 50000,
+      "type": "expense",
+      "accountName": "Bank",
+      "categoryName": "Ăn uống",
+      "date": "2025-05-20T14:00:00Z",
+      "note": "Coffee and pastry"
+    }
+  ]
+} 
