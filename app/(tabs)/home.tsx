@@ -407,6 +407,11 @@ const Home = () => {
             <Text className="text-white text-base font-semibold text-center">📸 Scan Receipt</Text>
           </TouchableOpacity>
         </Link>
+        <Link href="/chatbot" asChild>
+          <TouchableOpacity className="bg-blue-600 px-4 py-2 rounded-xl shadow mt-4">
+            <Text className="text-white text-base font-semibold text-center">💬 Ask Assistant</Text>
+          </TouchableOpacity>
+        </Link>
       </ScrollView>
       <TouchableOpacity
           onPress={() => router.push('/add-transaction')} // Make sure this screen exists

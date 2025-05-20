@@ -41,6 +41,7 @@ const RootLayout = () => {
         <Stack.Screen name="add-transaction" options={{ headerShown: false}}/>
         <Stack.Screen name="edit-ocr-transaction" options={{ headerShown: false}}/>
         <Stack.Screen name="receipt-log-confirmation" options={{ headerShown: false}}/>
+        <Stack.Screen name="chatbot" options={{ headerShown: false}}/>
       </Stack>
     </GlobalProvider>
   )
