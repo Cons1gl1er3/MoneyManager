@@ -1,7 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser } from '../lib/appwrite';
 
@@ -27,7 +37,6 @@ const ChatbotScreen = () => {
         const user = await getCurrentUser();
         if (user) {
           setUserId(user.$id);
-          console.log('User ID fetched:', user.$id);
         }
       } catch (error) {
         console.error('Error fetching user ID:', error);
@@ -42,10 +51,10 @@ const ChatbotScreen = () => {
     setMessages([
       {
         id: '1',
-        text: 'Hello! I\'m your transaction assistant. How can I help you today?',
+        text: "Hello! I'm your transaction assistant. How can I help you today?",
         isUser: false,
-        timestamp: new Date()
-      }
+        timestamp: new Date(),
+      },
     ]);
   }, []);
 
@@ -57,27 +66,30 @@ const ChatbotScreen = () => {
       id: Date.now().toString(),
       text: inputText,
       isUser: true,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
 
     try {
       // Send message to your webhook with user ID
-      const response = await fetch('https://n8n-production-b59a.up.railway.app/webhook/ba65b513-ba7e-495c-b5a4-5583b17bec0b', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Origin': 'exp://192.168.1.3:8081'  // Add your app's origin
-        },
-        body: JSON.stringify({
-          message: inputText,
-          timestamp: new Date().toISOString(),
-          userId: userId
-        })
-      });
+      const response = await fetch(
+        'https://n8n-production-b59a.up.railway.app/webhook-test/ba65b513-ba7e-495c-b5a4-5583b17bec0b',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Origin: 'exp://192.168.1.3:8081', // Add your app's origin
+          },
+          body: JSON.stringify({
+            message: inputText,
+            timestamp: new Date().toISOString(),
+            userId: userId,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -85,36 +97,35 @@ const ChatbotScreen = () => {
           status: response.status,
           statusText: response.statusText,
           headers: Object.fromEntries(response.headers.entries()),
-          body: errorText
+          body: errorText,
         });
         throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Server response data:', data);
 
       // Add bot response to chat
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: data.response,
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, botMessage]);
+      setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
       console.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
       });
       // Add error message to chat
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: `Error: ${error.message}. Please try again.`,
+        text: `Error: ${(error as Error).message}. Please try again.`,
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -128,81 +139,75 @@ const ChatbotScreen = () => {
   }, [messages]);
 
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-black">
-      <View className="flex-1 px-4 pt-12">
-        {/* Header */}
-        <View className="flex-row items-center mb-4">
-          <TouchableOpacity onPress={() => router.back()} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full">
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0} // Fine-tune this offset as needed
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Platform.OS === 'ios' ? '#007AFF' : '#000'} />
           </TouchableOpacity>
-          <Text className="text-2xl font-bold ml-4 text-gray-800 dark:text-white">Transaction Assistant</Text>
+          <Text style={styles.headerTitle}>Transaction Assistant</Text>
         </View>
 
-        {/* Chat Messages */}
         <ScrollView
           ref={scrollViewRef}
-          className="flex-1 mb-4"
-          contentContainerStyle={{ paddingBottom: 20 }}
+          style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContentContainer}
         >
           {messages.map((message) => (
             <View
               key={message.id}
-              className={`mb-4 ${message.isUser ? 'items-end' : 'items-start'}`}
+              style={[
+                styles.messageBubbleContainer,
+                message.isUser ? styles.userMessage : styles.botMessage,
+              ]}
             >
               <View
-                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                  message.isUser
-                    ? 'bg-blue-500'
-                    : 'bg-gray-200 dark:bg-gray-800'
-                }`}
+                style={[
+                  styles.messageBubble,
+                  message.isUser ? styles.userMessageBubble : styles.botMessageBubble,
+                ]}
               >
-                <Text
-                  className={`text-base ${
-                    message.isUser ? 'text-white' : 'text-gray-800 dark:text-white'
-                  }`}
-                >
+                <Text style={message.isUser ? styles.userMessageText : styles.botMessageText}>
                   {message.text}
                 </Text>
-                <Text
-                  className={`text-xs mt-1 ${
-                    message.isUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-                  }`}
-                >
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <Text style={message.isUser ? styles.userTimestamp : styles.botTimestamp}>
+                  {message.timestamp.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </Text>
               </View>
             </View>
           ))}
           {isLoading && (
-            <View className="items-start mb-4">
-              <View className="bg-gray-200 dark:bg-gray-800 rounded-2xl px-4 py-3">
+            <View style={[styles.messageBubbleContainer, styles.botMessage]}>
+              <View style={[styles.messageBubble, styles.botMessageBubble]}>
                 <ActivityIndicator size="small" color="#666" />
               </View>
             </View>
           )}
         </ScrollView>
 
-        {/* Input Area */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-row items-center mb-4"
-        >
+        <View style={styles.inputContainer}>
           <TextInput
             value={inputText}
             onChangeText={setInputText}
             placeholder="Type your message..."
             placeholderTextColor="#666"
-            className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full px-4 py-3 mr-2 text-gray-800 dark:text-white"
+            style={styles.textInput}
             multiline
           />
           <TouchableOpacity
             onPress={sendMessage}
             disabled={!inputText.trim() || isLoading}
-            className={`p-3 rounded-full ${
-              !inputText.trim() || isLoading
-                ? 'bg-gray-300 dark:bg-gray-700'
-                : 'bg-blue-500'
-            }`}
+            style={[
+              styles.sendButton,
+              (!inputText.trim() || isLoading) && styles.disabledSendButton,
+            ]}
           >
             <Ionicons
               name="send"
@@ -210,10 +215,110 @@ const ChatbotScreen = () => {
               color={!inputText.trim() || isLoading ? '#666' : 'white'}
             />
           </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
-export default ChatbotScreen; 
+// Using StyleSheet for better organization and performance
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'white', // or your dark mode color
+  },
+  flex: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  backButton: {
+    padding: 8,
+    backgroundColor: '#f0f0f0', // or your dark mode color
+    borderRadius: 9999,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginLeft: 16,
+    color: '#1f2937', // or your dark mode color
+  },
+  messagesContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  messagesContentContainer: {
+    paddingBottom: 20,
+  },
+  messageBubbleContainer: {
+    marginBottom: 16,
+  },
+  userMessage: {
+    alignItems: 'flex-end',
+  },
+  botMessage: {
+    alignItems: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  userMessageBubble: {
+    backgroundColor: '#007AFF',
+  },
+  botMessageBubble: {
+    backgroundColor: '#E5E7EB', // or your dark mode color
+  },
+  userMessageText: {
+    fontSize: 16,
+    color: 'white',
+  },
+  botMessageText: {
+    fontSize: 16,
+    color: '#1f2937', // or your dark mode color
+  },
+  userTimestamp: {
+    fontSize: 12,
+    marginTop: 4,
+    color: '#D1E8FF',
+  },
+  botTimestamp: {
+    fontSize: 12,
+    marginTop: 4,
+    color: '#6B7280', // or your dark mode color
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB', // or your dark mode color
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: '#f0f0f0', // or your dark mode color
+    borderRadius: 9999,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginRight: 8,
+    color: '#1f2937', // or your dark mode color
+  },
+  sendButton: {
+    padding: 12,
+    borderRadius: 9999,
+    backgroundColor: '#007AFF',
+  },
+  disabledSendButton: {
+    backgroundColor: '#D1D5DB', // or your dark mode color
+  },
+});
+
+export default ChatbotScreen;
