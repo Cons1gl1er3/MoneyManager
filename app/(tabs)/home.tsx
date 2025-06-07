@@ -72,7 +72,6 @@ interface Transaction {
   category_id: Category;
   is_income: boolean;
   note: string;
-  recurring_id: string;
   transaction_date: string;
   user_id: User;
 }

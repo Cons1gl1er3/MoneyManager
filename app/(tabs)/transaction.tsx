@@ -33,7 +33,6 @@ interface Transaction {
   category_id: Category;  // The category of the transaction
   is_income: boolean;  // Whether it's an income or expense
   note: string;  // Any notes associated with the transaction
-  recurring_id: string;  // If it's a recurring transaction
   transaction_date: string;  // The date of the transaction
   user_id: User;  // The user associated with the transaction
 }

@@ -75,7 +75,7 @@ const ChatbotScreen = () => {
     try {
       // Send message to your webhook with user ID
       const response = await fetch(
-        'https://n8n-production-b59a.up.railway.app/webhook-test/ba65b513-ba7e-495c-b5a4-5583b17bec0b',
+        'https://n8n-production-b59a.up.railway.app/webhook/ba65b513-ba7e-495c-b5a4-5583b17bec0b',
         {
           method: 'POST',
           headers: {
