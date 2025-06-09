@@ -2,11 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
 import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
-import { Link, useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import BarChartComponent from '../../components/BarChart';
 import CustomButton from '../../components/CustomButton';
 import { useGlobalContext } from '../../context/GlobalProvider';
@@ -124,6 +124,7 @@ const Home: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [animation] = useState(new Animated.Value(0));
+  const insets = useSafeAreaInsets();
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -166,10 +167,8 @@ const Home: React.FC = () => {
         console.log('No user ID available, skipping transaction fetch');
         return;
       }
-      console.log('Home: Fetching transactions for user:', userID);
       const allTransactions = await getTransactions(userID);
       setTransactions(allTransactions);
-      console.log('Home: Transactions fetched:', allTransactions.length);
     } catch (error) {
       console.error('Home: Error fetching transactions:', error);
       setTransactions([]); // Set empty array on error
@@ -216,7 +215,6 @@ const Home: React.FC = () => {
       console.log('Home: Fetching accounts...');
       const userAccounts = await getUserAccounts();
       setAccounts(userAccounts);
-      console.log('Home: Accounts fetched:', userAccounts.length);
     } catch (error) {
       console.error('Home: Error fetching accounts:', error);
       setAccounts([]); // Set empty array on error
@@ -365,7 +363,6 @@ const Home: React.FC = () => {
   // Get transactions for a specific account
   const getTransactionsByAccount = (accountId: string): Transaction[] => {
     const accountTransactions = transactions.filter(transaction => transaction.account_id.$id === accountId);
-    console.log(`Home: Account ${accountId} has ${accountTransactions.length} transactions`);
     return accountTransactions;
   };
 
@@ -375,7 +372,6 @@ const Home: React.FC = () => {
     const recentTransactions = accountTransactions
       .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
       .slice(0, 3);
-    console.log(`Home: Account ${accountId} recent transactions:`, recentTransactions.map(t => t.name));
     return recentTransactions;
   };
 
@@ -542,15 +538,12 @@ const Home: React.FC = () => {
                 const transactionCount = getTransactionsByAccount(account.$id).length;
                 const isNegativeBalance = account.balance < 0;
                 
-                console.log(`Home: Rendering account ${account.name}, transactions: ${transactionCount}, recent: ${recentTransactions.length}, total transactions state: ${transactions.length}`);
-                
                 return (
                   <TouchableOpacity 
                     key={account.$id} 
                     className="flex-1 bg-green-50 p-4 rounded-lg"
                     onPress={() => {
                       // TODO: Navigate to account detail with transactions
-                      console.log(`Clicked on account: ${account.name}`);
                     }}
                   >
                     <View className="flex-row justify-between items-center mb-3">
@@ -642,45 +635,6 @@ const Home: React.FC = () => {
           </View>
         </View>
 
-        {/* Budget Section */}
-        <View className="mt-6 px-4">
-          <View className="flex-row justify-between items-center">
-            <Text className="text-xl font-bold">Budgets</Text>
-            <TouchableOpacity>
-              <Text className="text-blue-600">VIEW ALL</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View className="mt-4 bg-green-50 p-4 rounded-lg">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-lg font-medium">November Budget</Text>
-              <Text className="text-xl font-bold">€1980.0</Text>
-            </View>
-            <View className="mt-2">
-              <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <View className="h-full w-4/5 bg-orange-400" />
-              </View>
-              <Text className="text-sm text-gray-600 mt-1">€1980.0 of €2500.0</Text>
-              <Text className="text-sm text-gray-600">79.20 %</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Transaction Section */}
-        <View className="mt-6 px-4 pb-20">
-          <Text className="text-xl font-bold">Transaction</Text>
-          <View className="mt-4 space-y-4">
-            <TransactionItem
-              icon="medical-outline"
-              color="#6366F1"
-              title="Health"
-              amount="250.0"
-              isExpense
-            />
-            {/* Add more transactions as needed */}
-          </View>
-        </View>
-
         <View>
           {/* Other components */}
           <CustomButton 
@@ -691,16 +645,6 @@ const Home: React.FC = () => {
             isLoading={false}
           />
         </View>
-        <Link href="/scan" asChild>
-          <TouchableOpacity className="bg-green-600 px-4 py-2 rounded-xl shadow mt-4">
-            <Text className="text-white text-base font-semibold text-center">📸 Scan Receipt</Text>
-          </TouchableOpacity>
-        </Link>
-        <Link href="/chatbot" asChild>
-          <TouchableOpacity className="bg-blue-600 px-4 py-2 rounded-xl shadow mt-4">
-            <Text className="text-white text-base font-semibold text-center">💬 Ask Assistant</Text>
-          </TouchableOpacity>
-        </Link>
       </ScrollView>
 
       {/* FAB Menu */}
@@ -773,9 +717,9 @@ const styles = StyleSheet.create({
   },
   menuItem: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 64,
     right: 24,
-    marginBottom: 2, // Reduced margin
+    marginBottom: 2,
   },
   menuButton: {
     flexDirection: 'row',
@@ -788,7 +732,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowRadius: 4
   },
   menuText: {
     color: 'white',
