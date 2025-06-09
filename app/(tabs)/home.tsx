@@ -6,11 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
 import { useIsFocused } from '@react-navigation/native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
-import CustomButton from '../../components/CustomButton';
-// import PieChartComponent from '../../components/PieChart';
 import BarChartComponent from '../../components/BarChart';
+import CustomButton from '../../components/CustomButton';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { getCurrentUser, getTransactions, getUserAccounts, logout, syncAccountBalance } from '../../lib/appwrite';
+import { getCurrentUser, getTransactions, getUserAccounts, logout } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
