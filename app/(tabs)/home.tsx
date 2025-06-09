@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
-import { useIsFocused } from '@react-navigation/native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import CustomButton from '../../components/CustomButton';
 // import PieChartComponent from '../../components/PieChart';
@@ -50,6 +49,11 @@ interface Account {
   $id: string;
   name: string;
   balance: number;
+}
+
+interface AccountWithTransactions extends Account {
+  transactionCount?: number;
+  recentTransactions?: Transaction[];
 }
 
 interface Category {
@@ -112,7 +116,6 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
 
 const Home = () => {
   const router = useRouter();
-  const isFocused = useIsFocused();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -285,7 +288,11 @@ const Home = () => {
     console.log('Manual refresh triggered with force=true');
     
     try {
+      // First fetch latest transactions
       await fetchTransactions(true); // Force refresh
+      console.log('Home: Transactions refreshed, now refreshing accounts...');
+      
+      // Then fetch accounts to sync balances and recent transactions
       await fetchAccounts();
       console.log('Manual refresh completed');
     } catch (error) {
@@ -315,13 +322,23 @@ const Home = () => {
     }
   }, [transactions, currentDate]);
 
-  // Use useIsFocused to trigger refresh when screen becomes active
+  // Fetch accounts when transactions change to update recent transactions
   useEffect(() => {
-    if (isFocused && userID) {
-      console.log('Screen is focused, triggering refresh...');
-      manualRefresh();
+    if (userID && transactions.length >= 0) {
+      console.log('Home: Transactions changed, fetching accounts to update recent transactions...');
+      fetchAccounts();
     }
-  }, [isFocused, userID]);
+  }, [userID, transactions.length]);
+
+  // Use useFocusEffect to trigger refresh when screen becomes active
+  useFocusEffect(
+    useCallback(() => {
+      if (userID) {
+        console.log('Screen is focused, triggering refresh...');
+        manualRefresh();
+      }
+    }, [userID])
+  );
 
   // Keep the original useFocusEffect as backup
   useFocusEffect(
@@ -380,8 +397,28 @@ const Home = () => {
     return recentTransactions;
   };
 
+  // Memoized account data to avoid unnecessary re-computations
+  const accountsWithTransactionData = useMemo((): AccountWithTransactions[] => {
+    if (!accounts.length || !transactions.length) return accounts;
+    
+    return accounts.map(account => {
+      const accountTransactions = transactions.filter(tx => tx.account_id.$id === account.$id);
+      const recentTransactions = accountTransactions
+        .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
+        .slice(0, 2);
+      
+      console.log(`Home: Memoized account ${account.name} with ${accountTransactions.length} transactions`);
+      
+      return {
+        ...account,
+        transactionCount: accountTransactions.length,
+        recentTransactions: recentTransactions
+      } as AccountWithTransactions;
+    });
+  }, [accounts, transactions]);
+
   return (
-    <SafeAreaView className={`flex-1 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+    <SafeAreaView className="flex-1 bg-white" edges={['top']}>
       <ScrollView className="flex-1">
         {/* Header */}
         <View className="flex-row justify-between items-center px-4 pt-4 my-5">
@@ -472,16 +509,14 @@ const Home = () => {
           
           {accounts.length > 0 ? (
             <View className="mt-4 flex-row space-x-4">
-              {accounts.slice(0, 2).map(account => {
-                const recentTransactions = getRecentTransactionsByAccount(account.$id);
-                const transactionCount = getTransactionsByAccount(account.$id).length;
+              {accountsWithTransactionData.slice(0, 2).map(account => {
                 const isNegativeBalance = account.balance < 0;
                 
-                console.log(`Home: Rendering account ${account.name}, transactions: ${transactionCount}, recent: ${recentTransactions.length}, total transactions state: ${transactions.length}`);
+                console.log(`Home: Rendering memoized account ${account.name}, transactions: ${account.transactionCount || 0}, recent: ${account.recentTransactions?.length || 0}`);
                 
                 return (
                   <TouchableOpacity 
-                    key={account.$id} 
+                    key={`${account.$id}-${transactions.length}-${account.transactionCount || 0}`}
                     className="flex-1 bg-green-50 p-4 rounded-lg"
                     onPress={() => {
                       // TODO: Navigate to account detail with transactions
@@ -501,27 +536,30 @@ const Home = () => {
                     
                     {/* Transaction count */}
                     <Text className="text-sm text-gray-500 mb-2">
-                      {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
+                      {account.transactionCount || 0} transaction{(account.transactionCount || 0) !== 1 ? 's' : ''}
                     </Text>
                     
                     {/* Recent transactions */}
-                    {recentTransactions.length > 0 && (
+                    {account.recentTransactions && account.recentTransactions.length > 0 && (
                       <View className="space-y-1">
                         <Text className="text-xs font-medium text-gray-600 mb-1">Recent:</Text>
-                        {recentTransactions.slice(0, 2).map((transaction, index) => (
-                          <View key={index} className="flex-row justify-between items-center">
-                            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
-                              {transaction.name}
-                            </Text>
-                            <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
-                              {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
-                            </Text>
-                          </View>
-                        ))}
+                        {account.recentTransactions.map((transaction, index) => {
+                          console.log(`Home: Rendering memoized transaction ${index}:`, transaction.name, transaction.amount);
+                          return (
+                            <View key={`${transaction.$id}-${index}`} className="flex-row justify-between items-center">
+                              <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
+                                {transaction.name}
+                              </Text>
+                              <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                                {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
+                              </Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                     
-                    {recentTransactions.length === 0 && (
+                    {(!account.recentTransactions || account.recentTransactions.length === 0) && (
                       <Text className="text-xs text-gray-400 italic">No transactions yet</Text>
                     )}
                   </TouchableOpacity>
@@ -602,7 +640,7 @@ const Home = () => {
         </View>
 
         {/* Transaction Section */}
-        <View className="mt-6 px-4 pb-20">
+        <View className="mt-6 px-4" style={{ paddingBottom: Platform.OS === 'android' ? 85 : 20 }}>
           <Text className="text-xl font-bold">Transaction</Text>
           <View className="mt-4 space-y-4">
             <TransactionItem

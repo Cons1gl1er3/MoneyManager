@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import PieChartComponent from '../../components/PieChart';
 
@@ -27,8 +27,8 @@ const Categories = () => {
   const total = categoryData.reduce((sum, item) => sum + item.amount, 0);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView className="flex-1 px-4 pt-4">
+    <SafeAreaView className="flex-1 bg-white" edges={['top']}>
+      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 85 : 20 }}>
         {/* Header */}
         <View className="flex-row justify-between items-center">
           <Text className="text-2xl font-bold">Categories</Text>
