@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,10 +45,12 @@ interface TransactionGroup {
 }
 
 const Transaction = () => {
+  const isFocused = useIsFocused();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactionsGroupedByDate, setTransactionsGroupedByDate] = useState<TransactionGroup[]>([]);
   const [userID, setUserID] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const formatDateHeader = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -83,14 +86,33 @@ const Transaction = () => {
   };
 
   // Function to fetch transactions
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (forceRefresh = false) => {
     try {
       if (userID) {
-        const allTransactions = await getTransactions(userID); // Fetch all transactions for the user
+        console.log('Transaction: Fetching transactions for user:', userID, 'forceRefresh:', forceRefresh);
+        const allTransactions = await getTransactions(userID, forceRefresh); // Fetch all transactions for the user
         setTransactions(allTransactions); // Store all transactions
+        console.log('Transaction: Transactions fetched:', allTransactions.length);
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error('Transaction: Error fetching transactions:', error);
+    }
+  };
+
+  // Manual refresh function
+  const manualRefresh = async () => {
+    if (!userID) return;
+    
+    setIsRefreshing(true);
+    console.log('Transaction: Manual refresh triggered with force=true');
+    
+    try {
+      await fetchTransactions(true); // Force refresh
+      console.log('Transaction: Manual refresh completed');
+    } catch (error) {
+      console.error('Transaction: Manual refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -137,10 +159,29 @@ const Transaction = () => {
     setTransactionsGroupedByDate(grouped);
   }, [transactions, currentDate]);
 
+  // Use useIsFocused to trigger refresh when screen becomes active
+  useEffect(() => {
+    if (isFocused && userID) {
+      console.log('Transaction: Screen is focused, triggering refresh...');
+      manualRefresh();
+    }
+  }, [isFocused, userID]);
+
+  // Backup useFocusEffect
   useFocusEffect(
     useCallback(() => {
+      console.log('Transaction: useFocusEffect triggered');
       if (userID) {
-        fetchTransactions();
+        const refreshData = async () => {
+          try {
+            await fetchTransactions(true);
+            console.log('Transaction: useFocusEffect refresh completed');
+          } catch (error) {
+            console.error('Transaction: useFocusEffect refresh error:', error);
+          }
+        };
+        
+        refreshData();
       }
     }, [userID])
   );
@@ -151,9 +192,18 @@ const Transaction = () => {
         {/* Header */}
         <View className="flex-row justify-between items-center px-4 pt-4 my-5">
           <Text className="text-2xl font-bold">Transaction</Text>
-          <TouchableOpacity>
-            <Ionicons name="settings-outline" size={24} color="#000" />
-          </TouchableOpacity>
+          <View className="flex-row items-center space-x-2">
+            <TouchableOpacity onPress={manualRefresh} disabled={isRefreshing}>
+              <Ionicons 
+                name="refresh-outline" 
+                size={24} 
+                color={isRefreshing ? "#9CA3AF" : "#3B82F6"} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity>
+              <Ionicons name="settings-outline" size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Month Selector */}
@@ -213,7 +263,7 @@ const Transaction = () => {
                           className="w-10 h-10 rounded-full items-center justify-center"
                         >
                           <Ionicons
-                            name={item.category_id.icon}
+                            name={item.category_id.icon as any}
                             size={20}
                             color="white"
                           />

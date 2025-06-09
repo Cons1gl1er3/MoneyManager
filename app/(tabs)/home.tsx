@@ -4,11 +4,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
+import { useIsFocused } from '@react-navigation/native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import CustomButton from '../../components/CustomButton';
 // import PieChartComponent from '../../components/PieChart';
+import BarChartComponent from '../../components/BarChart';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { getCurrentUser, getTransactions, getUserAccounts, logout } from '../../lib/appwrite';
+import { getCurrentUser, getTransactions, getUserAccounts, logout, syncAccountBalance } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -76,6 +78,12 @@ interface Transaction {
   user_id: User;
 }
 
+interface MonthlyData {
+  month: string;
+  income: number;
+  expense: number;
+}
+
 const CategoryItem = ({ icon, color, title, amount }: CategoryItemProps) => (
   <View className="flex-row justify-between items-center">
     <View className="flex-row items-center">
@@ -104,6 +112,7 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
 
 const Home = () => {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -111,6 +120,8 @@ const Home = () => {
   const { darkMode, toggleDarkMode, logoutUser } = useGlobalContext();
   const [userID, setUserID] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -143,14 +154,16 @@ const Home = () => {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (forceRefresh = false) => {
     try {
       if (userID) {
-        const allTransactions = await getTransactions(userID);
+        console.log('Home: Fetching transactions for user:', userID, 'forceRefresh:', forceRefresh);
+        const allTransactions = await getTransactions(userID, forceRefresh);
         setTransactions(allTransactions);
+        console.log('Home: Transactions fetched:', allTransactions.length);
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error('Home: Error fetching transactions:', error);
     }
   };
 
@@ -188,23 +201,98 @@ const Home = () => {
   const fetchAccounts = async () => {
     try {
       if (userID) {
+        console.log('Home: Fetching and syncing accounts...');
         const userAccounts = await getUserAccounts();
-        setAccounts(userAccounts);
+        
+        // Sync account balances with transactions
+        const syncedAccounts = await Promise.all(
+          userAccounts.map(async (account) => {
+            try {
+              const syncedBalance = await syncAccountBalance(account.$id);
+              return { ...account, balance: syncedBalance };
+            } catch (error) {
+              console.warn(`Failed to sync balance for account ${account.name}:`, error);
+              return account; // Return original account if sync fails
+            }
+          })
+        );
+        
+        setAccounts(syncedAccounts);
+        console.log('Home: Accounts synced:', syncedAccounts.length);
       }
     } catch (error) {
-      console.error('Error fetching accounts:', error);
+      console.error('Home: Error fetching accounts:', error);
     }
   };
 
   // Map account names to icons
-  const getAccountIcon = (name: string): string => {
+  const getAccountIcon = (name: string): keyof typeof IconType.glyphMap => {
     const lowerName = name.toLowerCase();
     if (lowerName.includes('wallet')) return 'wallet-outline';
     if (lowerName.includes('cash')) return 'cash-outline';
     if (lowerName.includes('card') || lowerName.includes('credit')) return 'card-outline';
-    if (lowerName.includes('savings')) return 'piggy-bank-outline';
-    if (lowerName.includes('checking')) return 'bank-outline';
+    if (lowerName.includes('savings')) return 'card-outline'; // piggy-bank-outline doesn't exist, use card-outline
+    if (lowerName.includes('checking')) return 'business-outline'; // bank-outline doesn't exist, use business-outline
     return 'wallet-outline'; // Default icon
+  };
+
+  const calculateMonthlyData = (allTransactions: Transaction[]): MonthlyData[] => {
+    const currentDate = new Date();
+    const monthlyStats: { [key: string]: { income: number; expense: number } } = {};
+
+    // Lấy dữ liệu 6 tháng gần nhất
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+      const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+      const monthLabel = date.toLocaleDateString('en-US', { month: 'short' });
+      
+      monthlyStats[monthKey] = { income: 0, expense: 0 };
+      
+      // Filter transactions cho tháng này
+      const monthTransactions = allTransactions.filter(transaction => {
+        const txDate = new Date(transaction.transaction_date);
+        return txDate.getFullYear() === date.getFullYear() && 
+               txDate.getMonth() === date.getMonth();
+      });
+
+      // Tính tổng thu nhập và chi tiêu
+      monthTransactions.forEach(transaction => {
+        if (transaction.is_income) {
+          monthlyStats[monthKey].income += transaction.amount;
+        } else {
+          monthlyStats[monthKey].expense += transaction.amount;
+        }
+      });
+    }
+
+    // Convert thành array cho chart
+    return Object.entries(monthlyStats).map(([key, values]) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year), parseInt(month), 1);
+      return {
+        month: date.toLocaleDateString('en-US', { month: 'short' }),
+        income: values.income,
+        expense: values.expense,
+      };
+    });
+  };
+
+  // Manual refresh function for testing
+  const manualRefresh = async () => {
+    if (!userID) return;
+    
+    setIsRefreshing(true);
+    console.log('Manual refresh triggered with force=true');
+    
+    try {
+      await fetchTransactions(true); // Force refresh
+      await fetchAccounts();
+      console.log('Manual refresh completed');
+    } catch (error) {
+      console.error('Manual refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -218,15 +306,39 @@ const Home = () => {
   }, [userID]);
 
   useEffect(() => {
-    const filtered = filterTransactionsByMonth(transactions, currentDate);
-    calculateTotals(filtered);
+    if (transactions.length > 0) {
+      const monthly = calculateMonthlyData(transactions);
+      setMonthlyData(monthly);
+      
+      const filtered = filterTransactionsByMonth(transactions, currentDate);
+      calculateTotals(filtered);
+    }
   }, [transactions, currentDate]);
 
+  // Use useIsFocused to trigger refresh when screen becomes active
+  useEffect(() => {
+    if (isFocused && userID) {
+      console.log('Screen is focused, triggering refresh...');
+      manualRefresh();
+    }
+  }, [isFocused, userID]);
+
+  // Keep the original useFocusEffect as backup
   useFocusEffect(
     useCallback(() => {
+      console.log('Home: useFocusEffect triggered');
       if (userID) {
-        fetchTransactions();
-        fetchAccounts();
+        const refreshData = async () => {
+          try {
+            await fetchTransactions(true); // Force refresh
+            await fetchAccounts();
+            console.log('Home: useFocusEffect refresh completed');
+          } catch (error) {
+            console.error('Home: useFocusEffect refresh error:', error);
+          }
+        };
+        
+        refreshData();
       }
     }, [userID])
   );
@@ -251,15 +363,41 @@ const Home = () => {
     }
   };
 
+  // Get transactions for a specific account
+  const getTransactionsByAccount = (accountId: string): Transaction[] => {
+    const accountTransactions = transactions.filter(transaction => transaction.account_id.$id === accountId);
+    console.log(`Home: Account ${accountId} has ${accountTransactions.length} transactions`);
+    return accountTransactions;
+  };
+
+  // Get recent transactions for an account (last 3)
+  const getRecentTransactionsByAccount = (accountId: string): Transaction[] => {
+    const accountTransactions = getTransactionsByAccount(accountId);
+    const recentTransactions = accountTransactions
+      .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
+      .slice(0, 3);
+    console.log(`Home: Account ${accountId} recent transactions:`, recentTransactions.map(t => t.name));
+    return recentTransactions;
+  };
+
   return (
     <SafeAreaView className={`flex-1 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       <ScrollView className="flex-1">
         {/* Header */}
         <View className="flex-row justify-between items-center px-4 pt-4 my-5">
           <Text className="text-2xl font-bold ">Home</Text>
-          <TouchableOpacity onPress={toggleDarkMode}>
-            <Ionicons name="settings-outline" size={24} color="#000" />
-          </TouchableOpacity>
+          <View className="flex-row items-center space-x-2">
+            <TouchableOpacity onPress={manualRefresh} disabled={isRefreshing}>
+              <Ionicons 
+                name="refresh-outline" 
+                size={24} 
+                color={isRefreshing ? "#9CA3AF" : "#3B82F6"} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={toggleDarkMode}>
+              <Ionicons name="settings-outline" size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Month Selector */}
@@ -293,33 +431,120 @@ const Home = () => {
           </View>
         </View>
 
-        {/* Account Section */}
+        {/* NEW: Monthly Trends Chart */}
+        <View className="mt-6 px-4">
+          <Text className="text-xl font-bold mb-4">Monthly Trends</Text>
+          <BarChartComponent 
+            data={monthlyData} 
+            height={300}
+            yAxisConfig={{
+              showGrid: true,
+              gridColor: '#e5e7eb',
+              labelColor: '#374151',
+              labelSize: 11,
+              numberOfTicks: 6,
+              showTitle: false,
+              title: 'VND'
+            }}
+            xAxisConfig={{
+              labelColor: '#374151',
+              labelSize: 12,
+              labelRotation: false,
+              showTitle: false,
+              title: 'Months',
+              labelFormatter: (month) => month
+            }}
+            barWidth={16}
+            barSpacing={3}
+            showTooltip={true}
+            currencySymbol="VNĐ"
+          />
+        </View>
+
+        {/* Money Source Section */}
         <View className="mt-6 px-4">
           <View className="flex-row justify-between items-center">
-            <Text className="text-xl font-bold">Account</Text>
+            <Text className="text-xl font-bold">Money Source</Text>
             <TouchableOpacity onPress={() => router.push('/add-account')}>
-              <Text className="text-blue-600">VIEW ALL</Text>
+              <Text className="text-green-600">CREATE</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4">
-            <View className="flex-row space-x-4">
-              {accounts.length > 0 ? (
-                accounts.map(account => (
-                  <View key={account.$id} className="w-40 bg-green-50 p-4 rounded-lg mr-5">
-                    <View className="flex-row justify-between items-center">
-                      <Text className="text-lg font-medium">{account.name}</Text>
-                      <Ionicons name={getAccountIcon(account.name)} size={24} color="#000" />
+          
+          {accounts.length > 0 ? (
+            <View className="mt-4 flex-row space-x-4">
+              {accounts.slice(0, 2).map(account => {
+                const recentTransactions = getRecentTransactionsByAccount(account.$id);
+                const transactionCount = getTransactionsByAccount(account.$id).length;
+                const isNegativeBalance = account.balance < 0;
+                
+                console.log(`Home: Rendering account ${account.name}, transactions: ${transactionCount}, recent: ${recentTransactions.length}, total transactions state: ${transactions.length}`);
+                
+                return (
+                  <TouchableOpacity 
+                    key={account.$id} 
+                    className="flex-1 bg-green-50 p-4 rounded-lg"
+                    onPress={() => {
+                      // TODO: Navigate to account detail with transactions
+                      console.log(`Clicked on account: ${account.name}`);
+                    }}
+                  >
+                    <View className="flex-row justify-between items-center mb-3">
+                      <Text className="text-lg font-medium flex-1" numberOfLines={1}>
+                        {account.name}
+                      </Text>
+                      <Ionicons name={getAccountIcon(account.name)} size={20} color="#000" />
                     </View>
-                    <Text className="text-xl font-bold mt-2 text-green-600">
+                    
+                    <Text className={`text-xl font-bold mb-2 ${isNegativeBalance ? 'text-red-500' : 'text-green-600'}`}>
                       {formatVND(account.balance)}
                     </Text>
-                  </View>
-                ))
-              ) : (
-                <Text className="text-gray-500 text-lg">No accounts found.</Text>
-              )}
+                    
+                    {/* Transaction count */}
+                    <Text className="text-sm text-gray-500 mb-2">
+                      {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
+                    </Text>
+                    
+                    {/* Recent transactions */}
+                    {recentTransactions.length > 0 && (
+                      <View className="space-y-1">
+                        <Text className="text-xs font-medium text-gray-600 mb-1">Recent:</Text>
+                        {recentTransactions.slice(0, 2).map((transaction, index) => (
+                          <View key={index} className="flex-row justify-between items-center">
+                            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
+                              {transaction.name}
+                            </Text>
+                            <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                              {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    
+                    {recentTransactions.length === 0 && (
+                      <Text className="text-xs text-gray-400 italic">No transactions yet</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </ScrollView>
+          ) : (
+            <View className="mt-4">
+              <Text className="text-gray-500 text-center text-lg py-8">No accounts found.</Text>
+            </View>
+          )}
+          
+          {/* Show "View All" hint if there are more than 2 money sources */}
+          {accounts.length > 2 && (
+            <TouchableOpacity 
+              onPress={() => router.push('/accounts')}
+              className="mt-3 py-2"
+            >
+              <Text className="text-center text-blue-600 text-sm">
+                View all money sources
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Categories Section */}
