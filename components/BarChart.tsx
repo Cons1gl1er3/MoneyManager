@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dimensions, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -55,17 +55,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 8,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    } : {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 1,
+    }),
   },
   noDataContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
+    minHeight: 200,
   },
   noDataText: {
     color: '#6b7280',
@@ -75,11 +80,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 24,
-    gap: 32,
+    ...(Platform.OS === 'web' ? {
+      gap: 32,
+    } : {}),
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    ...(Platform.OS !== 'web' ? {
+      marginHorizontal: 16,
+    } : {}),
   },
   legendColor: {
     width: 16,
@@ -103,14 +113,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 32,
     marginHorizontal: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     minWidth: 320,
+    maxWidth: Platform.OS === 'web' ? 400 : 320,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    } : {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 8,
+    }),
   },
   tooltipTitle: {
     fontSize: 20,
@@ -244,7 +259,7 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
   const chartHeight = height - 120; // Reserve more space for labels and title
   const yAxisWidth = 50; // Space for Y-axis labels
   const xAxisHeight = 50; // Space for X-axis labels
-  const chartWidth = screenWidth - 64 - yAxisWidth; // Adjust for Y-axis space
+  const chartWidth = Math.min(screenWidth - 64 - yAxisWidth, 800); // Max width for web
 
   // Generate Y-axis tick values
   const generateYAxisTicks = () => {
@@ -370,11 +385,13 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
                         backgroundColor: '#22c55e', // Green
                         marginRight: barSpacing,
                         borderRadius: incomeHeight > 4 ? 2 : 0, // No radius for very small bars
-                        elevation: 1,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 1,
+                        ...(Platform.OS !== 'web' ? {
+                          elevation: 1,
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 1 },
+                          shadowOpacity: 0.1,
+                          shadowRadius: 1,
+                        } : {}),
                       }}
                     />
                     {/* Expense Bar */}
@@ -384,11 +401,13 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
                         height: Math.max(expenseHeight, minValue === 0 ? 0 : 2), // Show 0 height if value is 0
                         backgroundColor: '#ef4444', // Red
                         borderRadius: expenseHeight > 4 ? 2 : 0, // No radius for very small bars
-                        elevation: 1,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 1,
+                        ...(Platform.OS !== 'web' ? {
+                          elevation: 1,
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 1 },
+                          shadowOpacity: 0.1,
+                          shadowRadius: 1,
+                        } : {}),
                       }}
                     />
                   </View>
@@ -471,8 +490,8 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
                 </Text>
               </View>
               
-              <View style={{ gap: 16 }}>
-                <View style={styles.tooltipRow}>
+              <View style={Platform.OS === 'web' ? { gap: 16 } : {}}>
+                <View style={[styles.tooltipRow, Platform.OS !== 'web' && { marginBottom: 16 }]}>
                   <View style={styles.tooltipLabelContainer}>
                     <View style={[styles.legendColor, { backgroundColor: '#22c55e', marginRight: 12 }]} />
                     <Text style={{ color: '#374151', fontWeight: '500', fontSize: 16 }}>Income:</Text>
@@ -484,7 +503,7 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
                   </View>
                 </View>
                 
-                <View style={styles.tooltipRow}>
+                <View style={[styles.tooltipRow, Platform.OS !== 'web' && { marginBottom: 16 }]}>
                   <View style={styles.tooltipLabelContainer}>
                     <View style={[styles.legendColor, { backgroundColor: '#ef4444', marginRight: 12 }]} />
                     <Text style={{ color: '#374151', fontWeight: '500', fontSize: 16 }}>Expense:</Text>
