@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
 import { useIsFocused } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import BarChartComponent from '../../components/BarChart';
 import CustomButton from '../../components/CustomButton';
@@ -109,7 +110,7 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
   </View>
 );
 
-const Home = () => {
+const Home: React.FC = () => {
   const router = useRouter();
   const isFocused = useIsFocused();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -121,6 +122,8 @@ const Home = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [animation] = useState(new Animated.Value(0));
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -145,24 +148,31 @@ const Home = () => {
   const fetchUserID = async () => {
     try {
       const user = await getCurrentUser();
-      if (user) {
-        setUserID(user.$id);
+      if (!user) {
+        console.log('No user found, redirecting to sign in...');
+        router.replace('/sign-in');
+        return;
       }
+      setUserID(user.$id);
     } catch (error) {
-      console.error('Error fetching user ID:', error);
+      console.error('Error fetching user:', error);
+      router.replace('/sign-in');
     }
   };
 
   const fetchTransactions = async (forceRefresh = false) => {
     try {
-      if (userID) {
-        console.log('Home: Fetching transactions for user:', userID, 'forceRefresh:', forceRefresh);
-        const allTransactions = await getTransactions(userID, forceRefresh);
-        setTransactions(allTransactions);
-        console.log('Home: Transactions fetched:', allTransactions.length);
+      if (!userID) {
+        console.log('No user ID available, skipping transaction fetch');
+        return;
       }
+      console.log('Home: Fetching transactions for user:', userID);
+      const allTransactions = await getTransactions(userID);
+      setTransactions(allTransactions);
+      console.log('Home: Transactions fetched:', allTransactions.length);
     } catch (error) {
       console.error('Home: Error fetching transactions:', error);
+      setTransactions([]); // Set empty array on error
     }
   };
 
@@ -199,28 +209,17 @@ const Home = () => {
 
   const fetchAccounts = async () => {
     try {
-      if (userID) {
-        console.log('Home: Fetching and syncing accounts...');
-        const userAccounts = await getUserAccounts();
-        
-        // Sync account balances with transactions
-        const syncedAccounts = await Promise.all(
-          userAccounts.map(async (account) => {
-            try {
-              const syncedBalance = await syncAccountBalance(account.$id);
-              return { ...account, balance: syncedBalance };
-            } catch (error) {
-              console.warn(`Failed to sync balance for account ${account.name}:`, error);
-              return account; // Return original account if sync fails
-            }
-          })
-        );
-        
-        setAccounts(syncedAccounts);
-        console.log('Home: Accounts synced:', syncedAccounts.length);
+      if (!userID) {
+        console.log('No user ID available, skipping account fetch');
+        return;
       }
+      console.log('Home: Fetching accounts...');
+      const userAccounts = await getUserAccounts();
+      setAccounts(userAccounts);
+      console.log('Home: Accounts fetched:', userAccounts.length);
     } catch (error) {
       console.error('Home: Error fetching accounts:', error);
+      setAccounts([]); // Set empty array on error
     }
   };
 
@@ -301,6 +300,7 @@ const Home = () => {
   useEffect(() => {
     if (userID) {
       fetchTransactions();
+      fetchAccounts();
     }
   }, [userID]);
 
@@ -329,7 +329,7 @@ const Home = () => {
       if (userID) {
         const refreshData = async () => {
           try {
-            await fetchTransactions(true); // Force refresh
+            await fetchTransactions(true);
             await fetchAccounts();
             console.log('Home: useFocusEffect refresh completed');
           } catch (error) {
@@ -377,6 +377,72 @@ const Home = () => {
       .slice(0, 3);
     console.log(`Home: Account ${accountId} recent transactions:`, recentTransactions.map(t => t.name));
     return recentTransactions;
+  };
+
+  const toggleMenu = () => {
+    const toValue = isMenuOpen ? 0 : 1;
+    Animated.spring(animation, {
+      toValue,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const menuItems = [
+    {
+      title: 'Add Transaction',
+      icon: 'add-circle' as const,
+      route: '/add-transaction' as const,
+    },
+    {
+      title: 'Scan Receipt',
+      icon: 'scan' as const,
+      route: '/scan' as const,
+    },
+    {
+      title: 'Assistant',
+      icon: 'chatbubble-ellipses' as const,
+      route: '/chatbot' as const,
+    },
+  ];
+
+  const renderMenuItems = () => {
+    return menuItems.map((item, index) => {
+      const translateY = animation.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -50 * (index + 1)], // Reduced spacing
+      });
+
+      const opacity = animation.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0, 0, 1],
+      });
+
+      return (
+        <Animated.View
+          key={item.title}
+          style={[
+            styles.menuItem,
+            {
+              transform: [{ translateY }],
+              opacity,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => {
+              setIsMenuOpen(false);
+              router.push(item.route);
+            }}
+          >
+            <Ionicons name={item.icon} size={24} color="white" />
+            <Text style={styles.menuText}>{item.title}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      );
+    });
   };
 
   return (
@@ -636,14 +702,100 @@ const Home = () => {
           </TouchableOpacity>
         </Link>
       </ScrollView>
-      <TouchableOpacity
-          onPress={() => router.push('/add-transaction')} // Make sure this screen exists
-          className="absolute bottom-6 right-6 bg-blue-600 p-4 rounded-full shadow-xl"
+
+      {/* FAB Menu */}
+      <Modal
+        visible={isMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsMenuOpen(false)}
+        >
+          <BlurView intensity={20} style={styles.blurView}>
+            {renderMenuItems()}
+            <TouchableOpacity
+              style={styles.fab}
+              onPress={toggleMenu}
+            >
+              <Ionicons
+                name={isMenuOpen ? 'close' : 'add'}
+                size={28}
+                color="white"
+              />
+            </TouchableOpacity>
+          </BlurView>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* FAB Button */}
+      {!isMenuOpen && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={toggleMenu}
         >
           <Ionicons name="add" size={28} color="white" />
-      </TouchableOpacity>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  blurView: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    padding: 24,
+  },
+  menuItem: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    marginBottom: 2, // Reduced margin
+  },
+  menuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3b82f6',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  menuText: {
+    color: 'white',
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+});
 
 export default Home;
