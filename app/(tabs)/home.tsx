@@ -1,16 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
-import { Link, useFocusEffect, useRouter } from 'expo-router';
-import CustomButton from '../../components/CustomButton';
-// import PieChartComponent from '../../components/PieChart';
+import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import BarChartComponent from '../../components/BarChart';
+import CustomButton from '../../components/CustomButton';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { getCurrentUser, getTransactions, getUserAccounts, logout, syncAccountBalance } from '../../lib/appwrite';
+import { getCurrentUser, getTransactions, getUserAccounts, logout } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -50,11 +50,6 @@ interface Account {
   $id: string;
   name: string;
   balance: number;
-}
-
-interface AccountWithTransactions extends Account {
-  transactionCount?: number;
-  recentTransactions?: Transaction[];
 }
 
 interface Category {
@@ -115,8 +110,9 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
   </View>
 );
 
-const Home = () => {
+const Home: React.FC = () => {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -152,24 +148,31 @@ const Home = () => {
   const fetchUserID = async () => {
     try {
       const user = await getCurrentUser();
-      if (user) {
-        setUserID(user.$id);
+      if (!user) {
+        console.log('No user found, redirecting to sign in...');
+        router.replace('/sign-in');
+        return;
       }
+      setUserID(user.$id);
     } catch (error) {
-      console.error('Error fetching user ID:', error);
+      console.error('Error fetching user:', error);
+      router.replace('/sign-in');
     }
   };
 
   const fetchTransactions = async (forceRefresh = false) => {
     try {
-      if (userID) {
-        console.log('Home: Fetching transactions for user:', userID, 'forceRefresh:', forceRefresh);
-        const allTransactions = await getTransactions(userID, forceRefresh);
-        setTransactions(allTransactions);
-        console.log('Home: Transactions fetched:', allTransactions.length);
+      if (!userID) {
+        console.log('No user ID available, skipping transaction fetch');
+        return;
       }
+      console.log('Home: Fetching transactions for user:', userID);
+      const allTransactions = await getTransactions(userID);
+      setTransactions(allTransactions);
+      console.log('Home: Transactions fetched:', allTransactions.length);
     } catch (error) {
       console.error('Home: Error fetching transactions:', error);
+      setTransactions([]); // Set empty array on error
     }
   };
 
@@ -206,28 +209,17 @@ const Home = () => {
 
   const fetchAccounts = async () => {
     try {
-      if (userID) {
-        console.log('Home: Fetching and syncing accounts...');
-        const userAccounts = await getUserAccounts();
-        
-        // Sync account balances with transactions
-        const syncedAccounts = await Promise.all(
-          userAccounts.map(async (account) => {
-            try {
-              const syncedBalance = await syncAccountBalance(account.$id);
-              return { ...account, balance: syncedBalance };
-            } catch (error) {
-              console.warn(`Failed to sync balance for account ${account.name}:`, error);
-              return account; // Return original account if sync fails
-            }
-          })
-        );
-        
-        setAccounts(syncedAccounts);
-        console.log('Home: Accounts synced:', syncedAccounts.length);
+      if (!userID) {
+        console.log('No user ID available, skipping account fetch');
+        return;
       }
+      console.log('Home: Fetching accounts...');
+      const userAccounts = await getUserAccounts();
+      setAccounts(userAccounts);
+      console.log('Home: Accounts fetched:', userAccounts.length);
     } catch (error) {
       console.error('Home: Error fetching accounts:', error);
+      setAccounts([]); // Set empty array on error
     }
   };
 
@@ -291,11 +283,7 @@ const Home = () => {
     console.log('Manual refresh triggered with force=true');
     
     try {
-      // First fetch latest transactions
       await fetchTransactions(true); // Force refresh
-      console.log('Home: Transactions refreshed, now refreshing accounts...');
-      
-      // Then fetch accounts to sync balances and recent transactions
       await fetchAccounts();
       console.log('Manual refresh completed');
     } catch (error) {
@@ -312,6 +300,7 @@ const Home = () => {
   useEffect(() => {
     if (userID) {
       fetchTransactions();
+      fetchAccounts();
     }
   }, [userID]);
 
@@ -325,23 +314,13 @@ const Home = () => {
     }
   }, [transactions, currentDate]);
 
-  // Fetch accounts when transactions change to update recent transactions
+  // Use useIsFocused to trigger refresh when screen becomes active
   useEffect(() => {
-    if (userID && transactions.length >= 0) {
-      console.log('Home: Transactions changed, fetching accounts to update recent transactions...');
-      fetchAccounts();
+    if (isFocused && userID) {
+      console.log('Screen is focused, triggering refresh...');
+      manualRefresh();
     }
-  }, [userID, transactions.length]);
-
-  // Use useFocusEffect to trigger refresh when screen becomes active
-  useFocusEffect(
-    useCallback(() => {
-      if (userID) {
-        console.log('Screen is focused, triggering refresh...');
-        manualRefresh();
-      }
-    }, [userID])
-  );
+  }, [isFocused, userID]);
 
   // Keep the original useFocusEffect as backup
   useFocusEffect(
@@ -350,7 +329,7 @@ const Home = () => {
       if (userID) {
         const refreshData = async () => {
           try {
-            await fetchTransactions(true); // Force refresh
+            await fetchTransactions(true);
             await fetchAccounts();
             console.log('Home: useFocusEffect refresh completed');
           } catch (error) {
@@ -400,28 +379,74 @@ const Home = () => {
     return recentTransactions;
   };
 
-  // Memoized account data to avoid unnecessary re-computations
-  const accountsWithTransactionData = useMemo((): AccountWithTransactions[] => {
-    if (!accounts.length || !transactions.length) return accounts;
-    
-    return accounts.map(account => {
-      const accountTransactions = transactions.filter(tx => tx.account_id.$id === account.$id);
-      const recentTransactions = accountTransactions
-        .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
-        .slice(0, 2);
-      
-      console.log(`Home: Memoized account ${account.name} with ${accountTransactions.length} transactions`);
-      
-      return {
-        ...account,
-        transactionCount: accountTransactions.length,
-        recentTransactions: recentTransactions
-      } as AccountWithTransactions;
+  const toggleMenu = () => {
+    const toValue = isMenuOpen ? 0 : 1;
+    Animated.spring(animation, {
+      toValue,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const menuItems = [
+    {
+      title: 'Add Transaction',
+      icon: 'add-circle' as const,
+      route: '/add-transaction' as const,
+    },
+    {
+      title: 'Scan Receipt',
+      icon: 'scan' as const,
+      route: '/scan' as const,
+    },
+    {
+      title: 'Assistant',
+      icon: 'chatbubble-ellipses' as const,
+      route: '/chatbot' as const,
+    },
+  ];
+
+  const renderMenuItems = () => {
+    return menuItems.map((item, index) => {
+      const translateY = animation.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -50 * (index + 1)], // Reduced spacing
+      });
+
+      const opacity = animation.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0, 0, 1],
+      });
+
+      return (
+        <Animated.View
+          key={item.title}
+          style={[
+            styles.menuItem,
+            {
+              transform: [{ translateY }],
+              opacity,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => {
+              setIsMenuOpen(false);
+              router.push(item.route);
+            }}
+          >
+            <Ionicons name={item.icon} size={24} color="white" />
+            <Text style={styles.menuText}>{item.title}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      );
     });
-  }, [accounts, transactions]);
+  };
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={['top']}>
+    <SafeAreaView className={`flex-1 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       <ScrollView className="flex-1">
         {/* Header */}
         <View className="flex-row justify-between items-center px-4 pt-4 my-5">
@@ -512,14 +537,16 @@ const Home = () => {
           
           {accounts.length > 0 ? (
             <View className="mt-4 flex-row space-x-4">
-              {accountsWithTransactionData.slice(0, 2).map(account => {
+              {accounts.slice(0, 2).map(account => {
+                const recentTransactions = getRecentTransactionsByAccount(account.$id);
+                const transactionCount = getTransactionsByAccount(account.$id).length;
                 const isNegativeBalance = account.balance < 0;
                 
-                console.log(`Home: Rendering memoized account ${account.name}, transactions: ${account.transactionCount || 0}, recent: ${account.recentTransactions?.length || 0}`);
+                console.log(`Home: Rendering account ${account.name}, transactions: ${transactionCount}, recent: ${recentTransactions.length}, total transactions state: ${transactions.length}`);
                 
                 return (
                   <TouchableOpacity 
-                    key={`${account.$id}-${transactions.length}-${account.transactionCount || 0}`}
+                    key={account.$id} 
                     className="flex-1 bg-green-50 p-4 rounded-lg"
                     onPress={() => {
                       // TODO: Navigate to account detail with transactions
@@ -539,30 +566,27 @@ const Home = () => {
                     
                     {/* Transaction count */}
                     <Text className="text-sm text-gray-500 mb-2">
-                      {account.transactionCount || 0} transaction{(account.transactionCount || 0) !== 1 ? 's' : ''}
+                      {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
                     </Text>
                     
                     {/* Recent transactions */}
-                    {account.recentTransactions && account.recentTransactions.length > 0 && (
+                    {recentTransactions.length > 0 && (
                       <View className="space-y-1">
                         <Text className="text-xs font-medium text-gray-600 mb-1">Recent:</Text>
-                        {account.recentTransactions.map((transaction, index) => {
-                          console.log(`Home: Rendering memoized transaction ${index}:`, transaction.name, transaction.amount);
-                          return (
-                            <View key={`${transaction.$id}-${index}`} className="flex-row justify-between items-center">
-                              <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
-                                {transaction.name}
-                              </Text>
-                              <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
-                                {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
-                              </Text>
-                            </View>
-                          );
-                        })}
+                        {recentTransactions.slice(0, 2).map((transaction, index) => (
+                          <View key={index} className="flex-row justify-between items-center">
+                            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
+                              {transaction.name}
+                            </Text>
+                            <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                              {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
+                            </Text>
+                          </View>
+                        ))}
                       </View>
                     )}
                     
-                    {(!account.recentTransactions || account.recentTransactions.length === 0) && (
+                    {recentTransactions.length === 0 && (
                       <Text className="text-xs text-gray-400 italic">No transactions yet</Text>
                     )}
                   </TouchableOpacity>
@@ -643,7 +667,7 @@ const Home = () => {
         </View>
 
         {/* Transaction Section */}
-        <View className="mt-6 px-4" style={{ paddingBottom: Platform.OS === 'android' ? 85 : 20 }}>
+        <View className="mt-6 px-4 pb-20">
           <Text className="text-xl font-bold">Transaction</Text>
           <View className="mt-4 space-y-4">
             <TransactionItem
@@ -751,7 +775,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 24,
-    marginBottom: 4,
+    marginBottom: 2, // Reduced margin
   },
   menuButton: {
     flexDirection: 'row',
