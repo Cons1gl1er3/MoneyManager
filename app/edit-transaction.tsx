@@ -1,28 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite';
+import { getCategories, getUserAccounts, updateTransaction } from '../lib/appwrite';
 
-const AddTransaction = () => {
+const EditTransaction = () => {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [name, setName] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [selectedAccount, setSelectedAccount] = useState(null);  // State for selected account
-  const [selectedCategory, setSelectedCategory] = useState(null); // State for selected category
-  const [accounts, setAccounts] = useState([]);  // List of user accounts
-  const [categories, setCategories] = useState([]);  // List of categories for dropdown
-  const [selectedDate, setSelectedDate] = useState(new Date()); // For date picker
-  const [showDatePicker, setShowDatePicker] = useState(false); // For toggling date picker visibility
-  const [isLoading, setIsLoading] = useState(false); // Loading state for saving transaction
-  const [showSuccessModal, setShowSuccessModal] = useState(false); // Success modal state
-  const [savedTransaction, setSavedTransaction] = useState(null); // Store saved transaction data
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [transactionId, setTransactionId] = useState<string>('');
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   // Platform-specific styles
   const platformStyles = StyleSheet.create({
@@ -76,13 +77,6 @@ const AddTransaction = () => {
       color: '#000000',
       backgroundColor: '#ffffff',
       marginBottom: Platform.OS === 'web' ? 20 : 24,
-      ...(Platform.OS === 'web' && {
-        outline: 'none',
-        '&:focus': {
-          borderColor: '#6366f1',
-          boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.1)',
-        },
-      }),
     },
     typeToggleContainer: {
       flexDirection: 'row',
@@ -121,10 +115,6 @@ const AddTransaction = () => {
       color: '#000000',
       backgroundColor: '#ffffff',
       height: Platform.OS === 'web' ? 50 : 50,
-      ...(Platform.OS === 'web' && {
-        border: 'none',
-        outline: 'none',
-      }),
       ...(Platform.OS === 'ios' && {
         height: 50,
         marginVertical: 0,
@@ -174,131 +164,18 @@ const AddTransaction = () => {
 
   // Format number with thousand separators
   const formatNumber = (text: string): string => {
-    // Remove all non-numeric characters
     const cleanedText = text.replace(/[^0-9]/g, '');
-    
-    // Add thousand separators
     if (cleanedText) {
       return cleanedText.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
     return cleanedText;
   };
 
-  // Get raw number without formatting
   const getRawNumber = (formattedText: string): string => {
     return formattedText.replace(/\./g, '');
   };
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [userAccounts, systemCategories] = await Promise.all([
-          getUserAccounts(),
-          getCategories()
-        ]);
-        
-        setAccounts(userAccounts);
-        setCategories(systemCategories);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        Alert.alert('Error', 'Failed to load data. Please try again.');
-      }
-    };
-
-    loadData();
-  }, []);
-
-  // Handle account and category selection
-  const handleSubmit = async () => {
-    if (isLoading) return; // Prevent multiple submissions
-    
-    setIsLoading(true);
-    
-    try {
-      // Get raw amount value for validation
-      const rawAmount = getRawNumber(amount);
-      
-      // Validation
-      if (!selectedAccount || !selectedCategory || !rawAmount || isNaN(parseFloat(rawAmount))) {
-        Alert.alert(
-          'Validation Error',
-          'Please fill all required fields correctly.',
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      if (parseFloat(rawAmount) <= 0) {
-        Alert.alert(
-          'Invalid Amount',
-          'Please enter a valid amount greater than 0.',
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      if (!name.trim()) {
-        Alert.alert(
-          'Missing Transaction Name',
-          'Please enter a transaction name.',
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      console.log('AddTransaction: Starting to save transaction...');
-      
-      // Call logTransaction with selected data
-      const accountID = selectedAccount; // Get the selected account ID
-      const categoryID = selectedCategory; // Get the selected category ID
-      const isIncome = type === 'income'; // Determine if it's income or expense
-      const transactionDate = selectedDate.toISOString(); // Use the selected date
-
-      console.log('AddTransaction: Transaction data:', {
-        name: name.trim(),
-        accountID,
-        categoryID,
-        amount: parseFloat(rawAmount),
-        isIncome,
-        note: note.trim(),
-        transactionDate
-      });
-
-      const transaction = await logTransaction(
-        name.trim(), 
-        accountID, 
-        categoryID, 
-        parseFloat(rawAmount), 
-        isIncome, 
-        note.trim(), 
-        transactionDate
-      );
-      
-      console.log('AddTransaction: Transaction saved successfully:', transaction.$id);
-      
-      // Store transaction data and show success modal
-      setSavedTransaction({
-        name: name.trim(),
-        amount: parseFloat(rawAmount),
-        type: isIncome ? 'Income' : 'Expense'
-      });
-      setShowSuccessModal(true);
-      
-    } catch (error) {
-      console.error('AddTransaction: Error logging transaction:', error);
-      
-      // Show detailed error message
-      const errorMessage = error.message || 'An unknown error occurred while saving the transaction.';
-      Alert.alert(
-        'Error Saving Transaction ❌',
-        `Failed to save transaction: ${errorMessage}\n\nPlease try again or check your internet connection.`,
-        [{ text: 'OK', style: 'default' }]
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Function to get picker item styles for better iOS compatibility
   const getPickerItemStyle = () => {
     if (Platform.OS === 'web') {
       return {
@@ -314,6 +191,106 @@ const AddTransaction = () => {
     }
   };
 
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        if (params.transaction) {
+          const transaction = JSON.parse(params.transaction as string);
+          setTransactionId(transaction.$id);
+          setName(transaction.name);
+          setType(transaction.is_income ? 'income' : 'expense');
+          setAmount(formatNumber(transaction.amount.toString()));
+          setNote(transaction.note);
+          setSelectedDate(new Date(transaction.transaction_date));
+          setSelectedAccount(transaction.account_id.$id);
+          setSelectedCategory(transaction.category_id.$id);
+        }
+
+        const [userAccounts, systemCategories] = await Promise.all([
+          getUserAccounts(),
+          getCategories()
+        ]);
+        
+        setAccounts(userAccounts);
+        setCategories(systemCategories);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        Alert.alert('Error', 'Failed to load transaction data. Please try again.');
+      }
+    };
+
+    loadData();
+  }, [params.transaction]);
+
+  // Handle success alert
+  useEffect(() => {
+    if (showSuccessAlert) {
+      const timer = setTimeout(() => {
+        Alert.alert(
+          'Success',
+          'Transaction has been updated successfully!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setShowSuccessAlert(false);
+                router.back();
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessAlert, router]);
+
+  const handleSubmit = async () => {
+    // avoid duplicate submits
+    if (isLoading) return;
+  
+    const rawAmount = getRawNumber(amount);
+  
+    // ---------- VALIDATION ----------
+    if (
+      !selectedAccount ||
+      !selectedCategory ||
+      !rawAmount ||
+      isNaN(+rawAmount) ||
+      +rawAmount <= 0 ||
+      !name.trim()
+    ) {
+      Alert.alert('Validation error', 'Please check all required fields.');
+      return;
+    }
+  
+    setIsLoading(true);
+    try {
+      // ---------- UPDATE ----------
+      await updateTransaction(transactionId, {
+        name: name.trim(),
+        account_id: selectedAccount,
+        category_id: selectedCategory,
+        amount: +rawAmount,
+        is_income: type === 'income',
+        note: note.trim(),
+        transaction_date: selectedDate.toISOString(),
+      });
+  
+             // ---------- SUCCESS ----------
+       setShowSuccessAlert(true);
+         } catch (err: any) {
+       // ---------- ERROR ----------
+       Alert.alert(
+         'Error',
+         `Failed to update transaction: ${err?.message ?? 'Unknown error'}`,
+       );
+    } finally {
+      setIsLoading(false); // always stop the spinner
+    }
+  };
+
   return (
     <SafeAreaView style={platformStyles.container}>
       <ScrollView 
@@ -326,7 +303,7 @@ const AddTransaction = () => {
           <TouchableOpacity onPress={() => router.back()} style={platformStyles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={platformStyles.title}>Add Transaction</Text>
+          <Text style={platformStyles.title}>Edit Transaction</Text>
         </View>
 
         {/* Transaction Name Input */}
@@ -334,7 +311,7 @@ const AddTransaction = () => {
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="E.g. Coffee, Grocery, Salary"
+          placeholder="Enter transaction name"
           placeholderTextColor="#9ca3af"
           style={platformStyles.textInput}
         />
@@ -344,13 +321,10 @@ const AddTransaction = () => {
         <TextInput
           keyboardType="numeric"
           value={amount}
-          onChangeText={(text) => {
-            const formatted = formatNumber(text);
-            setAmount(formatted);
-          }}
-          placeholder="E.g. 50.000, 100.000"
+          onChangeText={(text) => setAmount(formatNumber(text))}
+          placeholder="Enter amount"
           placeholderTextColor="#9ca3af"
-          style={[platformStyles.textInput, { marginBottom: 16 }]}
+          style={platformStyles.textInput}
         />
 
         {/* Type Toggle */}
@@ -423,7 +397,7 @@ const AddTransaction = () => {
         <TextInput
           value={note}
           onChangeText={setNote}
-          placeholder="E.g. Dinner with friends, Freelance work"
+          placeholder="Add a note"
           placeholderTextColor="#9ca3af"
           style={platformStyles.textInput}
         />
@@ -456,23 +430,20 @@ const AddTransaction = () => {
             }}
           />
         ) : (
-          <>
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
-              style={platformStyles.dateButton}
-            >
-              <Text style={platformStyles.dateText}>
-                {selectedDate.toLocaleDateString('vi-VN', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </Text>
-              <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-            </TouchableOpacity>
-
-          </>
+          <TouchableOpacity
+            onPress={() => setShowDatePicker(true)}
+            style={platformStyles.dateButton}
+          >
+            <Text style={platformStyles.dateText}>
+              {selectedDate.toLocaleDateString('vi-VN', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </Text>
+            <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+          </TouchableOpacity>
         )}
 
         {/* Date Picker Modal for iOS */}
@@ -561,129 +532,19 @@ const AddTransaction = () => {
           {isLoading ? (
             <>
               <Ionicons name="hourglass-outline" size={20} color="white" />
-              <Text style={platformStyles.submitButtonText}>Saving...</Text>
+              <Text style={platformStyles.submitButtonText}>Updating...</Text>
             </>
           ) : (
             <>
               <Ionicons name="save" size={20} color="white" />
-              <Text style={platformStyles.submitButtonText}>Save Transaction</Text>
+              <Text style={platformStyles.submitButtonText}>Update Transaction</Text>
             </>
           )}
         </TouchableOpacity>
-
-        {/* Success Modal */}
-        <Modal
-          animationType="slide"
-          transparent={true}
-          visible={showSuccessModal}
-          onRequestClose={() => setShowSuccessModal(false)}
-        >
-          <View style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: 'rgba(0,0,0,0.5)',
-          }}>
-            <View style={{
-              backgroundColor: 'white',
-              marginHorizontal: 24,
-              padding: 24,
-              borderRadius: 16,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.25,
-              shadowRadius: 8,
-              elevation: 8,
-              minWidth: Platform.OS === 'web' ? 400 : 300,
-            }}>
-              <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                <Ionicons name="checkmark-circle" size={60} color="#22c55e" />
-                <Text style={{
-                  fontSize: 24,
-                  fontWeight: 'bold',
-                  color: '#1f2937',
-                  marginTop: 8,
-                }}>
-                  Success!
-                </Text>
-              </View>
-              
-              {savedTransaction && (
-                <View style={{ marginBottom: 24 }}>
-                  <Text style={{
-                    color: '#6b7280',
-                    textAlign: 'center',
-                    marginBottom: 8,
-                  }}>
-                    Transaction has been saved successfully!
-                  </Text>
-                  <View style={{
-                    backgroundColor: '#f9fafb',
-                    padding: 16,
-                    borderRadius: 12,
-                  }}>
-                    <Text style={{
-                      fontWeight: '600',
-                      color: '#1f2937',
-                    }}>
-                      {savedTransaction.name}
-                    </Text>
-                    <Text style={{
-                      fontSize: 18,
-                      fontWeight: 'bold',
-                      color: '#2563eb',
-                      marginTop: 4,
-                    }}>
-                      {savedTransaction.type === 'Income' ? '+' : '-'}
-                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
-                        .format(savedTransaction.amount).replace('₫', 'VNĐ')}
-                    </Text>
-                    <Text style={{
-                      fontSize: 14,
-                      color: '#6b7280',
-                    }}>
-                      {savedTransaction.type}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              
-              <TouchableOpacity
-                onPress={() => {
-                  setShowSuccessModal(false);
-                  // Reset form
-                  setName('');
-                  setAmount('');
-                  setNote('');
-                  setSelectedAccount(null);
-                  setSelectedCategory(null);
-                  setSelectedDate(new Date());
-                  
-                  // Navigate back to home
-                  router.back();
-                }}
-                style={{
-                  backgroundColor: '#2563eb',
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 12,
-                }}
-              >
-                <Text style={{
-                  color: 'white',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}>
-                  Continue
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       </ScrollView>
       <StatusBar style="dark" />
     </SafeAreaView>
   );
 };
 
-export default AddTransaction;
+export default EditTransaction; 

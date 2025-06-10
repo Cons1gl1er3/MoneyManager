@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser, getTransactions } from '../../lib/appwrite';
 
@@ -143,8 +143,8 @@ const Analysis = () => {
   ];
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView className="flex-1">
+    <SafeAreaView className="flex-1 bg-white" edges={['top']}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 85 : 20 }}>
         {/* Header */}
         <View className="flex-row justify-between items-center px-4 pt-4 my-5">
           <Text className="text-2xl font-bold">Analysis</Text>
