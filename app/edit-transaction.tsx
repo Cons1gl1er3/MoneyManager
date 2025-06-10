@@ -1,16 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CustomPicker from '../components/CustomPicker';
+import SuccessModal from '../components/SuccessModal';
+import TypeToggleButton from '../components/TypeToggleButton';
 import { getCategories, getUserAccounts, updateTransaction } from '../lib/appwrite';
 
 const EditTransaction = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
+
   const [name, setName] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
@@ -22,14 +35,14 @@ const EditTransaction = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [transactionId, setTransactionId] = useState<string>('');
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [transactionId, setTransactionId] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [updatedTransaction, setUpdatedTransaction] = useState(null);
 
-  // Platform-specific styles
-  const platformStyles = StyleSheet.create({
+  const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#ffffff',
+      backgroundColor: '#fff',
       ...(Platform.OS === 'web' && {
         maxWidth: 800,
         alignSelf: 'center',
@@ -48,13 +61,11 @@ const EditTransaction = () => {
       marginBottom: Platform.OS === 'web' ? 20 : 24,
     },
     backButton: {
-      padding: Platform.OS === 'web' ? 8 : 8,
+      padding: 8,
       backgroundColor: '#e5e7eb',
-      borderRadius: Platform.OS === 'web' ? 8 : 20,
-      marginRight: Platform.OS === 'web' ? 12 : 16,
-      ...(Platform.OS === 'web' && {
-        cursor: 'pointer',
-      }),
+      borderRadius: 8,
+      marginRight: 12,
+      ...(Platform.OS === 'web' && { cursor: 'pointer' }),
     },
     title: {
       fontSize: Platform.OS === 'web' ? 28 : 24,
@@ -67,484 +78,276 @@ const EditTransaction = () => {
       fontSize: Platform.OS === 'web' ? 16 : 14,
       fontWeight: '500',
     },
-    textInput: {
+    input: {
       borderWidth: 1,
       borderColor: '#d1d5db',
+      borderRadius: 12,
       paddingHorizontal: 16,
-      paddingVertical: Platform.OS === 'web' ? 12 : 12,
-      borderRadius: 12,
-      fontSize: Platform.OS === 'web' ? 16 : 16,
-      color: '#000000',
-      backgroundColor: '#ffffff',
+      paddingVertical: 12,
+      fontSize: 16,
+      backgroundColor: '#fff',
       marginBottom: Platform.OS === 'web' ? 20 : 24,
-    },
-    typeToggleContainer: {
-      flexDirection: 'row',
-      marginBottom: Platform.OS === 'web' ? 20 : 16,
-      gap: Platform.OS === 'web' ? 16 : 8,
-    },
-    typeButton: {
-      flex: 1,
-      paddingVertical: Platform.OS === 'web' ? 14 : 12,
-      borderRadius: 12,
-      alignItems: 'center',
-      ...(Platform.OS === 'web' && {
-        cursor: 'pointer',
-      }),
-    },
-    typeButtonText: {
-      fontWeight: '600',
-      fontSize: Platform.OS === 'web' ? 16 : 14,
+      color: '#000',
     },
     pickerContainer: {
       borderWidth: 1,
       borderColor: '#d1d5db',
       borderRadius: 12,
+      backgroundColor: '#fff',
       marginBottom: Platform.OS === 'web' ? 20 : 16,
-      backgroundColor: '#ffffff',
-      ...(Platform.OS === 'web' && {
-        minHeight: 50,
-      }),
-      ...(Platform.OS === 'ios' && {
-        paddingVertical: 0,
-        height: 50,
-        justifyContent: 'center',
-      }),
-    },
-    picker: {
-      color: '#000000',
-      backgroundColor: '#ffffff',
-      height: Platform.OS === 'web' ? 50 : 50,
-      ...(Platform.OS === 'ios' && {
-        height: 50,
-        marginVertical: 0,
-      }),
     },
     dateButton: {
       borderWidth: 1,
       borderColor: '#d1d5db',
-      paddingHorizontal: 16,
-      paddingVertical: Platform.OS === 'web' ? 14 : 14,
       borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: Platform.OS === 'web' ? 28 : 24,
-      backgroundColor: '#ffffff',
-      ...(Platform.OS === 'web' && {
-        cursor: 'pointer',
-      }),
-      ...(Platform.OS === 'ios' && {
-        minHeight: 50,
-      }),
-    },
-    dateText: {
-      fontSize: Platform.OS === 'web' ? 16 : 16,
-      color: '#000000',
-      flex: 1,
+      marginBottom: 28,
+      backgroundColor: '#fff',
+      ...(Platform.OS === 'web' && { cursor: 'pointer' }),
     },
     submitButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: Platform.OS === 'web' ? 16 : 16,
       borderRadius: 12,
+      paddingVertical: 16,
       marginBottom: Platform.OS === 'web' ? 20 : 32,
-      ...(Platform.OS === 'web' && {
-        cursor: 'pointer',
-      }),
+      ...(Platform.OS === 'web' && { cursor: 'pointer' }),
     },
-    submitButtonText: {
-      color: 'white',
-      fontSize: Platform.OS === 'web' ? 16 : 16,
+    submitText: {
+      color: '#fff',
+      fontSize: 16,
       fontWeight: '600',
       marginLeft: 8,
     },
   });
 
-  // Format number with thousand separators
-  const formatNumber = (text: string): string => {
-    const cleanedText = text.replace(/[^0-9]/g, '');
-    if (cleanedText) {
-      return cleanedText.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    }
-    return cleanedText;
-  };
-
-  const getRawNumber = (formattedText: string): string => {
-    return formattedText.replace(/\./g, '');
-  };
-
-  // Function to get picker item styles for better iOS compatibility
-  const getPickerItemStyle = () => {
-    if (Platform.OS === 'web') {
-      return {
-        color: '#000000',
-        fontSize: 16,
-      };
-    } else {
-      return {
-        color: '#000000',
-        fontSize: 16,
-        height: 50,
-      };
-    }
-  };
+  const formatNumber = (text: string) =>
+    text.replace(/[^0-9]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const parseNumber = (formatted: string) => formatted.replace(/\./g, '');
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        if (params.transaction) {
-          const transaction = JSON.parse(params.transaction as string);
-          setTransactionId(transaction.$id);
-          setName(transaction.name);
-          setType(transaction.is_income ? 'income' : 'expense');
-          setAmount(formatNumber(transaction.amount.toString()));
-          setNote(transaction.note);
-          setSelectedDate(new Date(transaction.transaction_date));
-          setSelectedAccount(transaction.account_id.$id);
-          setSelectedCategory(transaction.category_id.$id);
-        }
-
-        const [userAccounts, systemCategories] = await Promise.all([
-          getUserAccounts(),
-          getCategories()
-        ]);
-        
-        setAccounts(userAccounts);
-        setCategories(systemCategories);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        Alert.alert('Error', 'Failed to load transaction data. Please try again.');
+    (async () => {
+      if (params.transaction) {
+        const t = JSON.parse(params.transaction as string);
+        setTransactionId(t.$id);
+        setName(t.name);
+        setType(t.is_income ? 'income' : 'expense');
+        setAmount(formatNumber(t.amount.toString()));
+        setNote(t.note);
+        setSelectedDate(new Date(t.transaction_date));
+        setSelectedAccount(t.account_id.$id);
+        setSelectedCategory(t.category_id.$id);
       }
-    };
-
-    loadData();
+      try {
+        const [userAccounts, cats] = await Promise.all([
+          getUserAccounts(),
+          getCategories(),
+        ]);
+        setAccounts(userAccounts);
+        setCategories(cats);
+      } catch {
+        Alert.alert('Error', 'Failed to load data.');
+      }
+    })();
   }, [params.transaction]);
 
-  // Handle success alert
-  useEffect(() => {
-    if (showSuccessAlert) {
-      const timer = setTimeout(() => {
-        Alert.alert(
-          'Success',
-          'Transaction has been updated successfully!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                setShowSuccessAlert(false);
-                router.back();
-              }
-            }
-          ],
-          { cancelable: false }
-        );
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [showSuccessAlert, router]);
-
-  const handleSubmit = async () => {
-    // avoid duplicate submits
+  const handleSave = async () => {
     if (isLoading) return;
-  
-    const rawAmount = getRawNumber(amount);
-  
-    // ---------- VALIDATION ----------
+    const amt = parseNumber(amount);
     if (
       !selectedAccount ||
       !selectedCategory ||
-      !rawAmount ||
-      isNaN(+rawAmount) ||
-      +rawAmount <= 0 ||
+      !amt ||
+      isNaN(+amt) ||
+      +amt <= 0 ||
       !name.trim()
     ) {
-      Alert.alert('Validation error', 'Please check all required fields.');
+      Alert.alert('Validation error', 'Please fill all required fields.');
       return;
     }
-  
     setIsLoading(true);
     try {
-      // ---------- UPDATE ----------
-      await updateTransaction(transactionId, {
+      const payload = {
         name: name.trim(),
         account_id: selectedAccount,
         category_id: selectedCategory,
-        amount: +rawAmount,
+        amount: +amt,
         is_income: type === 'income',
         note: note.trim(),
         transaction_date: selectedDate.toISOString(),
+      };
+      await updateTransaction(transactionId, payload);
+      
+      setUpdatedTransaction({
+        name: payload.name,
+        amount: payload.amount,
+        type: payload.is_income ? 'Income' : 'Expense',
       });
-  
-             // ---------- SUCCESS ----------
-       setShowSuccessAlert(true);
-         } catch (err: any) {
-       // ---------- ERROR ----------
-       Alert.alert(
-         'Error',
-         `Failed to update transaction: ${err?.message ?? 'Unknown error'}`,
-       );
+      setShowSuccessModal(true);
+
+    } catch (e: any) {
+      Alert.alert('Error', `Failed to update: ${e.message ?? 'Unknown'}`);
     } finally {
-      setIsLoading(false); // always stop the spinner
+      setIsLoading(false);
     }
   };
 
+  const renderDatePicker = () => {
+    if (Platform.OS === 'web') return null;
+    if (Platform.OS === 'ios') {
+      return (
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={{ color: '#6b7280' }}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={{ fontWeight: '600' }}>Select Date</Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={{ color: '#007AFF', fontWeight: '600' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, date) => {
+                  if (date) setSelectedDate(date);
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      );
+    }
+    
+    return (
+      <DateTimePicker
+        value={selectedDate}
+        mode="date"
+        display="default"
+        onChange={(event, date) => {
+          setShowDatePicker(false);
+          if (date) setSelectedDate(date);
+        }}
+      />
+    );
+  };
+
   return (
-    <SafeAreaView style={platformStyles.container}>
-      <ScrollView 
-        contentContainerStyle={platformStyles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Header */}
-        <View style={platformStyles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={platformStyles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <StatusBar style="dark" />
+        
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={20} color="#374151" />
           </TouchableOpacity>
-          <Text style={platformStyles.title}>Edit Transaction</Text>
+          <Text style={styles.title}>Edit Transaction</Text>
         </View>
 
-        {/* Transaction Name Input */}
-        <Text style={platformStyles.label}>Transaction Name</Text>
+        <Text style={styles.label}>Transaction Name *</Text>
         <TextInput
+          style={styles.input}
           value={name}
           onChangeText={setName}
           placeholder="Enter transaction name"
           placeholderTextColor="#9ca3af"
-          style={platformStyles.textInput}
         />
 
-        {/* Amount Input */}
-        <Text style={platformStyles.label}>Amount</Text>
+        <Text style={styles.label}>Type *</Text>
+        <TypeToggleButton type={type} onTypeChange={setType} />
+
+        <Text style={styles.label}>Amount *</Text>
         <TextInput
-          keyboardType="numeric"
+          style={styles.input}
           value={amount}
           onChangeText={(text) => setAmount(formatNumber(text))}
-          placeholder="Enter amount"
+          placeholder="0"
+          keyboardType="numeric"
           placeholderTextColor="#9ca3af"
-          style={platformStyles.textInput}
         />
 
-        {/* Type Toggle */}
-        <Text style={platformStyles.label}>Type</Text>
-        <View style={platformStyles.typeToggleContainer}>
-          <TouchableOpacity
-            onPress={() => setType('expense')}
-            style={[
-              platformStyles.typeButton,
-              { backgroundColor: type === 'expense' ? '#dc2626' : '#e5e7eb' }
-            ]}
-          >
-            <Text style={[
-              platformStyles.typeButtonText,
-              { color: type === 'expense' ? 'white' : '#374151' }
-            ]}>
-              Expense
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setType('income')}
-            style={[
-              platformStyles.typeButton,
-              { backgroundColor: type === 'income' ? '#16a34a' : '#e5e7eb' }
-            ]}
-          >
-            <Text style={[
-              platformStyles.typeButtonText,
-              { color: type === 'income' ? 'white' : '#374151' }
-            ]}>
-              Income
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <CustomPicker
+          label="Select Money Source *"
+          items={accounts.map((acc) => ({ label: acc.name, value: acc.$id }))}
+          selectedValue={selectedAccount}
+          onValueChange={(value) => setSelectedAccount(value)}
+          placeholder="Choose an account"
+        />
 
-        {/* Account Selection */}
-        <Text style={platformStyles.label}>Select Account</Text>
-        <View style={platformStyles.pickerContainer}>
-          <Picker
-            selectedValue={selectedAccount}
-            onValueChange={(itemValue) => setSelectedAccount(itemValue)}
-            style={platformStyles.picker}
-            itemStyle={getPickerItemStyle()}
-          >
-            <Picker.Item label="Choose Account" value={null} color="#6b7280" />
-            {accounts.map((account, index) => (
-              <Picker.Item key={index} label={account.name} value={account.$id} color="#000000" />
-            ))}
-          </Picker>
-        </View>
+        <CustomPicker
+          label="Select Category *"
+          items={categories.map((cat) => ({ label: cat.name, value: cat.$id }))}
+          selectedValue={selectedCategory}
+          onValueChange={(value) => setSelectedCategory(value)}
+          placeholder="Choose a category"
+        />
 
-        {/* Category Selection */}
-        <Text style={platformStyles.label}>Select Category</Text>
-        <View style={platformStyles.pickerContainer}>
-          <Picker
-            selectedValue={selectedCategory}
-            onValueChange={(itemValue) => setSelectedCategory(itemValue)}
-            style={platformStyles.picker}
-            itemStyle={getPickerItemStyle()}
-          >
-            <Picker.Item label="Choose Category" value={null} color="#6b7280" />
-            {categories.map((category, index) => (
-              <Picker.Item key={index} label={category.name} value={category.$id} color="#000000" />
-            ))}
-          </Picker>
-        </View>
+        <Text style={styles.label}>Date *</Text>
+        <TouchableOpacity
+          style={styles.dateButton}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={{ color: '#000', fontSize: 16 }}>
+            {selectedDate.toLocaleDateString()}
+          </Text>
+          <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+        </TouchableOpacity>
 
-        {/* Note Input */}
-        <Text style={platformStyles.label}>Note (optional)</Text>
+        <Text style={styles.label}>Note</Text>
         <TextInput
+          style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
           value={note}
           onChangeText={setNote}
-          placeholder="Add a note"
+          placeholder="Add a note (optional)"
+          multiline
           placeholderTextColor="#9ca3af"
-          style={platformStyles.textInput}
         />
 
-        {/* Date Selection */}
-        <Text style={platformStyles.label}>Transaction Date</Text>
-        {Platform.OS === 'web' ? (
-          <input
-            type="date"
-            value={selectedDate.toISOString().split('T')[0]}
-            onChange={(e) => {
-              const newDate = new Date(e.target.value);
-              if (!isNaN(newDate.getTime())) {
-                setSelectedDate(newDate);
-              }
-            }}
-            max={new Date().toISOString().split('T')[0]}
-            style={{
-              border: '1px solid #d1d5db',
-              padding: '14px 16px',
-              borderRadius: 12,
-              fontSize: 16,
-              color: '#000000',
-              backgroundColor: '#ffffff',
-              marginBottom: 28,
-              outline: 'none',
-              width: '100%',
-              fontFamily: 'inherit',
-              boxSizing: 'border-box',
-            }}
-          />
-        ) : (
-          <TouchableOpacity
-            onPress={() => setShowDatePicker(true)}
-            style={platformStyles.dateButton}
-          >
-            <Text style={platformStyles.dateText}>
-              {selectedDate.toLocaleDateString('vi-VN', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </Text>
-            <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-          </TouchableOpacity>
-        )}
-
-        {/* Date Picker Modal for iOS */}
-        {Platform.OS === 'ios' && (
-          <Modal
-            animationType="slide"
-            transparent={true}
-            visible={showDatePicker}
-            onRequestClose={() => setShowDatePicker(false)}
-          >
-            <View style={{
-              flex: 1,
-              justifyContent: 'flex-end',
-              backgroundColor: 'rgba(0,0,0,0.5)',
-            }}>
-              <View style={{
-                backgroundColor: '#ffffff',
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                paddingTop: 20,
-                paddingBottom: 40,
-                paddingHorizontal: 20,
-              }}>
-                <View style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 20,
-                }}>
-                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
-                  </TouchableOpacity>
-                  <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937' }}>
-                    Select Date
-                  </Text>
-                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={{ color: '#2563eb', fontSize: 16, fontWeight: '600' }}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display="spinner"
-                  onChange={(event, date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                    }
-                  }}
-                  maximumDate={new Date()}
-                  textColor="#000000"
-                  style={{
-                    backgroundColor: '#ffffff',
-                    height: 200,
-                  }}
-                />
-              </View>
-            </View>
-          </Modal>
-        )}
-
-        {/* Android Date Picker */}
-        {Platform.OS === 'android' && showDatePicker && (
-          <DateTimePicker
-            value={selectedDate}
-            mode="date"
-            display="default"
-            onChange={(event, date) => {
-              setShowDatePicker(false);
-              if (date) {
-                setSelectedDate(date);
-              }
-            }}
-            maximumDate={new Date()}
-          />
-        )}
-
-        {/* Submit Button */}
         <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={isLoading}
           style={[
-            platformStyles.submitButton,
-            { backgroundColor: isLoading ? '#9ca3af' : '#2563eb' }
+            styles.submitButton,
+            { backgroundColor: isLoading ? '#9ca3af' : '#2563eb' },
           ]}
+          onPress={handleSave}
+          disabled={isLoading}
         >
-          {isLoading ? (
-            <>
-              <Ionicons name="hourglass-outline" size={20} color="white" />
-              <Text style={platformStyles.submitButtonText}>Updating...</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="save" size={20} color="white" />
-              <Text style={platformStyles.submitButtonText}>Update Transaction</Text>
-            </>
-          )}
+          <Ionicons
+            name={isLoading ? 'hourglass-outline' : 'save-outline'}
+            size={20}
+            color="#fff"
+          />
+          <Text style={styles.submitText}>
+            {isLoading ? 'Updating...' : 'Update Transaction'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
-      <StatusBar style="dark" />
+
+      {showDatePicker && renderDatePicker()}
+
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          router.back();
+        }}
+        message="Transaction updated successfully!"
+        transactionDetails={updatedTransaction}
+      />
     </SafeAreaView>
   );
 };
 
-export default EditTransaction; 
+export default EditTransaction;

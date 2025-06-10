@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import SuccessModal from '../../components/SuccessModal';
 import { deleteTransaction, getCurrentUser, getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
 
 interface Account {
@@ -55,6 +56,7 @@ const Transaction = () => {
   const [showActionModal, setShowActionModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Platform-specific styles
   const styles = StyleSheet.create({
@@ -362,12 +364,10 @@ const Transaction = () => {
       const result = await deleteTransaction(selectedTransaction.$id);
       console.log('Frontend: Delete result:', result);
       
-      Alert.alert('Success', 'Transaction has been deleted successfully!');
-      
       // Refresh transactions after deletion
-      console.log('Frontend: Refreshing transactions after deletion');
       await fetchTransactions(true);
-      console.log('Frontend: Transaction refresh completed');
+      setShowSuccessModal(true); // Show success modal instead of alert
+      
     } catch (error) {
       console.error('Frontend: Error deleting transaction:', error);
       Alert.alert('Error', `Failed to delete transaction: ${error.message || 'Unknown error occurred'}`);
@@ -675,6 +675,13 @@ const Transaction = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Success Modal for Deletion */}
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        message="Transaction has been deleted successfully!"
+      />
 
       <StatusBar style="dark" />
     </SafeAreaView>

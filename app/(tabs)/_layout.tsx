@@ -35,9 +35,9 @@ export default function TabLayout() {
         return {
           style: {
             ...baseColors,
-            height: 70,
+            height: 82,
             paddingTop: 10,
-            paddingBottom: 10,
+            paddingBottom: 12,
             borderTopWidth: 1,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: -2 },
@@ -55,21 +55,17 @@ export default function TabLayout() {
       case 'ios':
         return {
           style: {
-            ...baseColors,
-            height: insets.bottom > 0 ? 50 + insets.bottom : 60,
-            paddingTop: 4,
-            paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
-            marginTop: 0,
-            marginBottom: 0,
-            borderTopWidth: 0.5,
+            backgroundColor: '#ffffff',
+            borderTopColor: '#e5e7eb',
+            borderTopWidth: 1,
             shadowColor: '#000',
-            shadowOffset: { width: 0, height: -1 },
+            shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.1,
-            shadowRadius: 3,
+            shadowRadius: 4,
+            paddingTop: 4
           },
           labelStyle: {
-            fontSize: 10,
-            marginBottom: insets.bottom > 0 ? 2 : 4,
+            fontSize: 11,
             fontWeight: '500' as const,
           },
         };
@@ -79,9 +75,9 @@ export default function TabLayout() {
             return {
               style: {
                 ...baseColors,
-                height: 65 + insets.bottom, // Add the safe area to the height
+                height: 65 + insets.bottom, 
                 paddingTop: 8,
-                paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 20, // Increase paddingBottom
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 20, 
                 borderTopWidth: 1,
                 elevation: 10,
                 shadowColor: '#000',
@@ -100,7 +96,7 @@ export default function TabLayout() {
 
   const tabBarConfig = getTabBarConfig();
 
-  return (
+    return (
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -112,11 +108,10 @@ export default function TabLayout() {
         tabBarShowLabel: true,
         tabBarAllowFontScaling: false,
         ...(Platform.OS === 'ios' && {
-          tabBarBackground: () => null,
           tabBarItemStyle: {
-            paddingVertical: 0,
+            paddingVertical: 4,
             marginVertical: 0,
-          },
+          }
         }),
         ...(Platform.OS === 'android' && {
           tabBarItemStyle: {

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
 import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
@@ -442,46 +442,39 @@ const Home: React.FC = () => {
   };
 
   return (
-    <SafeAreaView className={`flex-1 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-      <ScrollView className="flex-1">
-        {/* Header */}
-        <View className="flex-row justify-between items-center px-4 pt-4 my-5">
-          <Text className="text-2xl font-bold ">Home</Text>
-          <View className="flex-row items-center space-x-2">
-            <TouchableOpacity onPress={manualRefresh} disabled={isRefreshing}>
-              <Ionicons 
-                name="refresh-outline" 
-                size={24} 
-                color={isRefreshing ? "#9CA3AF" : "#3B82F6"} 
-              />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={toggleDarkMode}>
-              <Ionicons name="settings-outline" size={24} color="#000" />
-            </TouchableOpacity>
-          </View>
+    <View className="bg-gray-50 flex-1">
+      {/* Header */}
+      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 16, backgroundColor: '#F9FAFB' }}>
+        <View className="flex-row justify-between items-center mb-4">
+          <Text className="text-2xl font-bold">Home</Text>
+          <TouchableOpacity onPress={toggleMenu}>
+            <Ionicons name="settings-outline" size={24} color="black" />
+          </TouchableOpacity>
         </View>
 
-        {/* Month Selector */}
-        <View className="flex-row justify-between items-center px-4 my-6">
+        {/* Month Navigator */}
+        <View className="flex-row justify-between items-center mb-6">
+          <TouchableOpacity onPress={() => changeMonth(-1)}>
+            <Ionicons name="chevron-back" size={24} color="#4B5563" />
+          </TouchableOpacity>
           <View className="flex-row items-center">
-            <Ionicons name="calendar-outline" size={20} color="#000" />
-            <Text className="text-lg ml-2">{currentDate.toLocaleString('default', { month: 'long' })} {currentDate.getFullYear()}</Text>
+            <Ionicons name="calendar-outline" size={20} color="#4B5563" />
+            <Text className="text-lg font-semibold ml-2">{currentDate.toLocaleString('default', { month: 'long' })} {currentDate.getFullYear()}</Text>
           </View>
-          <View className="flex-row items-center">
-            <TouchableOpacity className="mr-4" onPress={() => changeMonth(-1)}>
-              <Ionicons name="chevron-back" size={24} color="#000" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => changeMonth(1)}>
-              <Ionicons name="chevron-forward" size={24} color="#000" />
-            </TouchableOpacity>
-            <TouchableOpacity className="ml-4">
-              <Ionicons name="menu" size={24} color="#000" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={() => changeMonth(1)}>
+            <Ionicons name="chevron-forward" size={24} color="#4B5563" />
+          </TouchableOpacity>
         </View>
-
+      </View>
+      
+      {/* Main Content */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        className="flex-1 px-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+      >
         {/* Income & Spending Cards */}
-        <View className="flex-row px-4 mt-4 space-x-4">
+        <View className="flex-row justify-between items-center mb-6">
           <View className="flex-1 bg-green-50 p-4 rounded-lg mr-3">
             <Text className="text-lg font-medium">Income</Text>
             <Text className="text-md font-bold mt-1">{formatVND(incomeTotal)}</Text>
@@ -684,7 +677,7 @@ const Home: React.FC = () => {
           <Ionicons name="add" size={28} color="white" />
         </TouchableOpacity>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

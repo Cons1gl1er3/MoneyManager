@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CustomPicker from '../components/CustomPicker';
+import SuccessModal from '../components/SuccessModal';
+import TypeToggleButton from '../components/TypeToggleButton';
 import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite';
 
 const AddTransaction = () => {
@@ -355,68 +357,25 @@ const AddTransaction = () => {
 
         {/* Type Toggle */}
         <Text style={platformStyles.label}>Type</Text>
-        <View style={platformStyles.typeToggleContainer}>
-          <TouchableOpacity
-            onPress={() => setType('expense')}
-            style={[
-              platformStyles.typeButton,
-              { backgroundColor: type === 'expense' ? '#dc2626' : '#e5e7eb' }
-            ]}
-          >
-            <Text style={[
-              platformStyles.typeButtonText,
-              { color: type === 'expense' ? 'white' : '#374151' }
-            ]}>
-              Expense
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setType('income')}
-            style={[
-              platformStyles.typeButton,
-              { backgroundColor: type === 'income' ? '#16a34a' : '#e5e7eb' }
-            ]}
-          >
-            <Text style={[
-              platformStyles.typeButtonText,
-              { color: type === 'income' ? 'white' : '#374151' }
-            ]}>
-              Income
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TypeToggleButton type={type} onTypeChange={setType} />
 
         {/* Account Selection */}
-        <Text style={platformStyles.label}>Select Account</Text>
-        <View style={platformStyles.pickerContainer}>
-          <Picker
-            selectedValue={selectedAccount}
-            onValueChange={(itemValue) => setSelectedAccount(itemValue)}
-            style={platformStyles.picker}
-            itemStyle={getPickerItemStyle()}
-          >
-            <Picker.Item label="Choose Account" value={null} color="#6b7280" />
-            {accounts.map((account, index) => (
-              <Picker.Item key={index} label={account.name} value={account.$id} color="#000000" />
-            ))}
-          </Picker>
-        </View>
+        <CustomPicker
+          label="Select Money Source"
+          items={accounts.map((account) => ({ label: account.name, value: account.$id }))}
+          selectedValue={selectedAccount}
+          onValueChange={(itemValue) => setSelectedAccount(itemValue)}
+          placeholder="Choose an account"
+        />
 
         {/* Category Selection */}
-        <Text style={platformStyles.label}>Select Category</Text>
-        <View style={platformStyles.pickerContainer}>
-          <Picker
-            selectedValue={selectedCategory}
-            onValueChange={(itemValue) => setSelectedCategory(itemValue)}
-            style={platformStyles.picker}
-            itemStyle={getPickerItemStyle()}
-          >
-            <Picker.Item label="Choose Category" value={null} color="#6b7280" />
-            {categories.map((category, index) => (
-              <Picker.Item key={index} label={category.name} value={category.$id} color="#000000" />
-            ))}
-          </Picker>
-        </View>
+        <CustomPicker
+          label="Select Category"
+          items={categories.map((category) => ({ label: category.name, value: category.$id }))}
+          selectedValue={selectedCategory}
+          onValueChange={(itemValue) => setSelectedCategory(itemValue)}
+          placeholder="Choose a category"
+        />
 
         {/* Note Input */}
         <Text style={platformStyles.label}>Note (optional)</Text>
@@ -572,114 +531,24 @@ const AddTransaction = () => {
         </TouchableOpacity>
 
         {/* Success Modal */}
-        <Modal
-          animationType="slide"
-          transparent={true}
+        <SuccessModal
           visible={showSuccessModal}
-          onRequestClose={() => setShowSuccessModal(false)}
-        >
-          <View style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: 'rgba(0,0,0,0.5)',
-          }}>
-            <View style={{
-              backgroundColor: 'white',
-              marginHorizontal: 24,
-              padding: 24,
-              borderRadius: 16,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.25,
-              shadowRadius: 8,
-              elevation: 8,
-              minWidth: Platform.OS === 'web' ? 400 : 300,
-            }}>
-              <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                <Ionicons name="checkmark-circle" size={60} color="#22c55e" />
-                <Text style={{
-                  fontSize: 24,
-                  fontWeight: 'bold',
-                  color: '#1f2937',
-                  marginTop: 8,
-                }}>
-                  Success!
-                </Text>
-              </View>
-              
-              {savedTransaction && (
-                <View style={{ marginBottom: 24 }}>
-                  <Text style={{
-                    color: '#6b7280',
-                    textAlign: 'center',
-                    marginBottom: 8,
-                  }}>
-                    Transaction has been saved successfully!
-                  </Text>
-                  <View style={{
-                    backgroundColor: '#f9fafb',
-                    padding: 16,
-                    borderRadius: 12,
-                  }}>
-                    <Text style={{
-                      fontWeight: '600',
-                      color: '#1f2937',
-                    }}>
-                      {savedTransaction.name}
-                    </Text>
-                    <Text style={{
-                      fontSize: 18,
-                      fontWeight: 'bold',
-                      color: '#2563eb',
-                      marginTop: 4,
-                    }}>
-                      {savedTransaction.type === 'Income' ? '+' : '-'}
-                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
-                        .format(savedTransaction.amount).replace('₫', 'VNĐ')}
-                    </Text>
-                    <Text style={{
-                      fontSize: 14,
-                      color: '#6b7280',
-                    }}>
-                      {savedTransaction.type}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              
-              <TouchableOpacity
-                onPress={() => {
-                  setShowSuccessModal(false);
-                  // Reset form
-                  setName('');
-                  setAmount('');
-                  setNote('');
-                  setSelectedAccount(null);
-                  setSelectedCategory(null);
-                  setSelectedDate(new Date());
-                  
-                  // Navigate back to home
-                  router.back();
-                }}
-                style={{
-                  backgroundColor: '#2563eb',
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 12,
-                }}
-              >
-                <Text style={{
-                  color: 'white',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}>
-                  Continue
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => {
+            setShowSuccessModal(false);
+            // Reset form
+            setName('');
+            setAmount('');
+            setNote('');
+            setSelectedAccount(null);
+            setSelectedCategory(null);
+            setSelectedDate(new Date());
+            
+            // Navigate back
+            router.back();
+          }}
+          message="Transaction has been saved successfully!"
+          transactionDetails={savedTransaction}
+        />
       </ScrollView>
       <StatusBar style="dark" />
     </SafeAreaView>
