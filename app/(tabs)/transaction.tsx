@@ -3,8 +3,14 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import ActionModal from '../../components/ActionModal';
+import ConfirmModal from '../../components/ConfirmModal';
+import DatePickerModal from '../../components/DatePickerModal';
+import ErrorModal from '../../components/ErrorModal';
+import FloatingActionButton from '../../components/FloatingActionButton';
+import MonthSelector from '../../components/MonthSelector';
 import SuccessModal from '../../components/SuccessModal';
 import { deleteTransaction, getCurrentUser, getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
 
@@ -48,6 +54,7 @@ interface TransactionGroup {
 
 const Transaction = () => {
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactionsGroupedByDate, setTransactionsGroupedByDate] = useState<TransactionGroup[]>([]);
   const [userID, setUserID] = useState<string | null>(null);
@@ -57,147 +64,22 @@ const Transaction = () => {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebugModal, setShowDebugModal] = useState(false);
 
-  // Platform-specific styles
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: '#ffffff',
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      marginVertical: 20,
-    },
-    headerTitle: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: '#000000',
-    },
-    refreshButton: {
-      padding: 8,
-    },
-    monthSelector: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      marginVertical: 24,
-    },
-    monthInfo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    monthText: {
-      fontSize: 18,
-      marginLeft: 8,
-      color: '#000000',
-    },
-    monthControls: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    monthButton: {
-      marginHorizontal: 16,
-    },
-         fab: {
-       position: 'absolute',
-       bottom: Platform.OS === 'web' ? 24 : 24,
-       right: 24,
-       backgroundColor: '#3B82F6',
-       paddingVertical: 16,
-       paddingHorizontal: 16,
-       borderRadius: 50,
-       elevation: 8,
-       shadowColor: '#000',
-       shadowOffset: { width: 0, height: 4 },
-       shadowOpacity: 0.3,
-       shadowRadius: 8,
-     },
-    modalOverlay: {
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    modalContent: {
-      backgroundColor: '#ffffff',
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: 24,
-    },
-    modalHandle: {
-      width: 48,
-      height: 4,
-      backgroundColor: '#D1D5DB',
-      borderRadius: 2,
-      alignSelf: 'center',
-      marginBottom: 16,
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: '#1F2937',
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    modalSubtitle: {
-      fontSize: 16,
-      color: '#6B7280',
-      textAlign: 'center',
-      marginBottom: 24,
-    },
-    actionButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 16,
-      borderRadius: 12,
-      marginBottom: 12,
-    },
-    actionIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 16,
-    },
-    actionTextContainer: {
-      flex: 1,
-    },
-    actionTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: '#1F2937',
-      marginBottom: 4,
-    },
-    actionDescription: {
-      fontSize: 14,
-      color: '#6B7280',
-    },
-    cancelButton: {
-      backgroundColor: '#F3F4F6',
-      marginTop: 8,
-    },
-    cancelButtonText: {
-      color: '#6B7280',
-      textAlign: 'center',
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    confirmButton: {
-      backgroundColor: '#DC2626',
-      marginTop: 12,
-    },
-    confirmButtonText: {
-      color: '#ffffff',
-      textAlign: 'center',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-  });
+  // Format VND currency
+  const formatVND = (amount: number): string => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    })
+      .format(amount)
+      .replace('₫', 'VNĐ');
+  };
 
   const formatDateHeader = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -214,7 +96,8 @@ const Transaction = () => {
   
     // Prevent future months
     if (newDate > new Date()) {
-      alert("You cannot select a future month.");
+      setErrorModalMessage('You cannot select a future month.');
+      setErrorModalVisible(true);
       return;
     }
   
@@ -333,208 +216,181 @@ const Transaction = () => {
     }, [userID])
   );
 
-  // Handle transaction item press
+  // Handles tapping on a transaction row
   const handleTransactionPress = (transaction: Transaction) => {
+    addDebugLog(`ACTION_START: User pressed transaction "${transaction.name}"`);
     setSelectedTransaction(transaction);
     setShowActionModal(true);
   };
 
-  // Handle edit transaction
-  const handleEditTransaction = () => {
-    if (selectedTransaction) {
-      setShowActionModal(false);
-      router.push(`/edit-transaction?transaction=${encodeURIComponent(JSON.stringify(selectedTransaction))}`);
-    }
+  // Handles DISMISSING the ActionModal (tapping outside)
+  const handleDismissActionModal = () => {
+    addDebugLog('ACTION_CANCEL: User dismissed the action modal.');
+    setShowActionModal(false);
+    setSelectedTransaction(null); // Clean up state
+    setShowDeleteConfirm(false); // Also ensure delete confirm is closed
   };
 
-  // Handle delete transaction with confirmation
-  const handleDeleteTransaction = () => {
-    if (!selectedTransaction) return;
+  // Handles the "Edit" button press from the ActionModal
+  const handleEditAction = () => {
+    if (!selectedTransaction) {
+      addDebugLog('EDIT_ERROR: "Edit" pressed but no transaction was selected.');
+      return;
+    }
+    const transactionToEdit = { ...selectedTransaction }; // Make a copy before clearing state
+    
+    addDebugLog(`ACTION_CONFIRM: User chose to edit "${transactionToEdit.name}".`);
+    
+    // Close modal FIRST
+    setShowActionModal(false);
+    setSelectedTransaction(null);
+    
+    // Navigate to the edit screen with transaction details
+    router.push({
+      pathname: '/edit-transaction',
+      params: { transaction: JSON.stringify(transactionToEdit) }
+    });
+  };
+
+  // Handles the "Delete" button press from the ActionModal
+  const handleDeleteAction = () => {
+    if (!selectedTransaction) {
+      addDebugLog('DELETE_ERROR: "Delete" pressed but no transaction was selected.');
+      return;
+    }
+    
+    addDebugLog(`DELETE_CONFIRM_START: User chose to delete "${selectedTransaction.name}". Showing confirmation.`);
+    
+    // Hide ActionModal and show ConfirmModal
     setShowActionModal(false);
     setShowDeleteConfirm(true);
   };
 
-  // Confirm delete transaction
-  const confirmDeleteTransaction = async () => {
-    if (!selectedTransaction) return;
+  // Handles CANCELING the delete confirmation
+  const handleCancelDelete = () => {
+    addDebugLog('DELETE_CANCEL: User canceled the delete operation.');
     
     setShowDeleteConfirm(false);
+    setSelectedTransaction(null); // Clean up state
+  };
+  
+  // Actually DELETES the transaction after confirmation
+  const confirmDeleteTransaction = async () => {
+    if (!selectedTransaction) {
+      addDebugLog('DELETE_ERROR: Confirmation received but no transaction was selected.');
+      return;
+    }
+    
+    const transactionToDelete = { ...selectedTransaction }; // Make a copy
+    addDebugLog(`DELETE_CONFIRMED: Deleting transaction "${transactionToDelete.name}" (${transactionToDelete.$id}).`);
+
+    // Hide confirmation modal
+    setShowDeleteConfirm(false);
+
     try {
-      console.log('Frontend: Starting transaction deletion for ID:', selectedTransaction.$id);
-      const result = await deleteTransaction(selectedTransaction.$id);
-      console.log('Frontend: Delete result:', result);
+      await deleteTransaction(transactionToDelete.$id);
+      addDebugLog(`DELETE_SUCCESS: Transaction "${transactionToDelete.name}" deleted.`);
       
-      // Refresh transactions after deletion
-      await fetchTransactions(true);
-      setShowSuccessModal(true); // Show success modal instead of alert
+      // Update local state to reflect deletion
+      setTransactions(prev => prev.filter(t => t.$id !== transactionToDelete.$id));
+      
+      // Show success message
+      setShowSuccessModal(true);
       
     } catch (error) {
-      console.error('Frontend: Error deleting transaction:', error);
-      Alert.alert('Error', `Failed to delete transaction: ${error.message || 'Unknown error occurred'}`);
+      console.error('Error deleting transaction:', error);
+      addDebugLog(`DELETE_FAILED: Error deleting transaction. Reason: ${error.message}`);
+      
+      setErrorModalMessage('Failed to delete transaction. Please try again.');
+      setErrorModalVisible(true);
+      
+    } finally {
+      setSelectedTransaction(null); // Clean up state
     }
   };
 
+  const handleDateSelect = (newDate: Date) => {
+    setCurrentDate(newDate);
+  };
+
+  const addDebugLog = (message: string) => {
+    setDebugLogs(prevLogs => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prevLogs]);
+  };
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView style={{ flex: 1 }}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Transaction</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity 
-              onPress={manualRefresh} 
-              disabled={isRefreshing}
-              style={styles.refreshButton}
-            >
-              <Ionicons 
-                name="refresh-outline" 
-                size={24} 
-                color={isRefreshing ? "#9CA3AF" : "#3B82F6"} 
-              />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.refreshButton}>
-              <Ionicons name="settings-outline" size={24} color="#000" />
-            </TouchableOpacity>
-          </View>
+    <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
+      {/* Header */}
+      <View className="px-4 pt-4 my-5">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-2xl font-bold text-black">Transactions</Text>
+          <TouchableOpacity onPress={() => router.push('/settings')}>
+            <Ionicons name="settings-outline" size={24} color="#000" />
+          </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Month Selector */}
-        <View style={styles.monthSelector}>
-          <View style={styles.monthInfo}>
-            <Ionicons name="calendar-outline" size={20} color="#000" />
-            <Text style={styles.monthText}>
-              {currentDate.toLocaleString('default', { month: 'long' })} {currentDate.getFullYear()}
-            </Text>
+      {/* Month Selector */}
+      <View className='px-4'>
+        <MonthSelector
+          currentDate={currentDate}
+          onChangeMonth={changeMonth}
+          onDatePress={() => setShowDatePicker(true)}
+        />
+      </View>
+      
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 120, paddingTop: 16 }}
+      >
+        {transactionsGroupedByDate.length === 0 ? (
+          <View className="flex-1 items-center justify-center mt-20">
+            <Text className="text-gray-500">No transactions found for this month.</Text>
           </View>
-          <View style={styles.monthControls}>
-            <TouchableOpacity 
-              style={styles.monthButton} 
-              onPress={() => changeMonth(-1)}
-            >
-              <Ionicons name="chevron-back" size={24} color="#000" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => changeMonth(1)}>
-              <Ionicons name="chevron-forward" size={24} color="#000" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.monthButton}>
-              <Ionicons name="menu" size={24} color="#000" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Render Transactions */}
-        {transactionsGroupedByDate.length > 0 ? (
+        ) : (
           transactionsGroupedByDate.map((group, index) => {
             const { day, month, year, weekday } = formatDateHeader(group.date);
             return (
-              <View key={index} style={{ marginBottom: 24, paddingHorizontal: 12 }}>
+              <View key={index} className="mb-6">
                 {/* Date Header */}
-                <View style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  borderBottomWidth: 1,
-                  borderBottomColor: '#E5E7EB',
-                  paddingBottom: 4,
-                  marginBottom: 12,
-                }}>
-                  <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{
-                        width: 40,
-                        height: 40,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 8,
-                      }}>
-                        <Text style={{ fontWeight: 'bold', fontSize: 20, color: '#000' }}>
-                          {day}
-                        </Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-start' }}>
-                        <Text style={{ fontSize: 12, color: '#000', fontWeight: '600' }}>
-                          {month} {year}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: '#000', fontWeight: '600' }}>
-                          {weekday}
-                        </Text>
-                      </View>
+                <View className="flex-row items-center justify-between mb-3 px-8">
+                  <View className="flex-row items-center">
+                    <Text className="text-3xl font-bold text-gray-800">{day}</Text>
+                    <View className="ml-2">
+                      <Text className="text-sm font-semibold text-gray-600">{weekday}</Text>
+                      <Text className="text-xs text-gray-400">{month} {year}</Text>
                     </View>
                   </View>
-                  <View style={{ marginRight: 12 }}>
-                    <Text style={{
-                      fontSize: 16,
-                      fontWeight: 'bold',
-                      color: group.total >= 0 ? '#059669' : '#DC2626',
-                    }}>
-                      {group.total >= 0 ? '+' : '-'}
-                      {new Intl.NumberFormat('vi-VN', { 
-                        style: 'currency', 
-                        currency: 'VND' 
-                      }).format(Math.abs(group.total)).replace('₫', 'VNĐ')}
-                    </Text>
-                  </View>
+                  <Text className={`font-bold ${group.total >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {formatVND(group.total)}
+                  </Text>
                 </View>
-
-                {/* Transactions */}
-                <View style={{ gap: 12 }}>
-                  {group.transactions.map((item, idx) => (
+                
+                {/* Transaction List */}
+                <View className="bg-white rounded-lg shadow-sm overflow-hidden mx-4">
+                  {group.transactions.map((transaction, txIndex) => (
                     <TouchableOpacity 
-                      key={idx} 
-                      style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        backgroundColor: '#F9FAFB',
-                        padding: 12,
-                        borderRadius: 8,
-                      }}
-                      onPress={() => handleTransactionPress(item)}
+                      key={transaction.$id} 
+                      onPress={() => handleTransactionPress(transaction)}
+                      activeOpacity={0.7}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {/* Category icon */}
-                        <View
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: item.category_id.color,
-                          }}
+                      <View 
+                        className={`flex-row items-center p-4 ${txIndex < group.transactions.length - 1 ? 'border-b border-gray-100' : ''}`}
+                      >
+                        <View 
+                          className="w-10 h-10 rounded-full items-center justify-center"
+                          style={{ backgroundColor: transaction.category_id?.color || '#cccccc' }}
                         >
-                          <Ionicons
-                            name={item.category_id.icon as any}
-                            size={20}
-                            color="white"
+                          <Ionicons 
+                            name={(transaction.category_id?.icon as any) || 'help-circle'}
+                            size={20} 
+                            color="white" 
                           />
                         </View>
-                        <View style={{ marginLeft: 12 }}>
-                          <Text style={{ fontWeight: '500', color: '#000' }}>
-                            {item.name}
-                          </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                            <Ionicons name="list-circle-outline" size={14} color="#22C55E" />
-                            <Text style={{ fontSize: 12, color: '#6B7280', marginLeft: 4 }}>
-                              {item.account_id.name}
-                            </Text>
-                          </View>
+                        <View className="flex-1 ml-4">
+                          <Text className="font-semibold text-gray-800" numberOfLines={1}>{transaction.name}</Text>
+                          <Text className="text-sm text-gray-500">{transaction.category_id?.name || 'Uncategorized'}</Text>
                         </View>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{
-                          fontWeight: 'bold',
-                          fontSize: 16,
-                          color: item.is_income ? '#22C55E' : '#EF4444',
-                        }}>
-                          {item.is_income ? '+' : '-'}
-                          {new Intl.NumberFormat('vi-VN', { 
-                            style: 'currency', 
-                            currency: 'VND' 
-                          }).format(item.amount).replace('₫', 'VNĐ')}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
-                          {item.transaction_date.split('T')[0]}
+                        <Text className={`font-bold ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                          {transaction.is_income ? '+' : '-'}{formatVND(transaction.amount)}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -543,147 +399,98 @@ const Transaction = () => {
               </View>
             );
           })
-        ) : (
-          <View style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            minHeight: 200,
-          }}>
-            <Text style={{ color: '#6B7280', fontSize: 18 }}>
-              No transactions for this month.
-            </Text>
-          </View>
         )}
       </ScrollView>
 
       {/* Floating Action Button */}
-      <TouchableOpacity
-        onPress={() => router.push('/add-transaction')}
-        style={styles.fab}
-      >
-        <Ionicons name="add" size={28} color="white" />
-      </TouchableOpacity>
+      <FloatingActionButton />
 
       {/* Action Modal */}
+      <ActionModal
+        visible={showActionModal}
+        onClose={handleDismissActionModal}
+        title={selectedTransaction?.name || 'Transaction'}
+        transactionDetails={selectedTransaction ? {
+          categoryName: selectedTransaction.category_id.name,
+          amount: selectedTransaction.amount,
+          isIncome: selectedTransaction.is_income
+        } : undefined}
+        actions={[
+          {
+            label: 'Edit',
+            icon: 'pencil',
+            color: '#3b82f6',
+            onPress: handleEditAction,
+            subtitle: 'Change transaction details',
+          },
+          {
+            label: 'Delete',
+            icon: 'trash-outline',
+            color: '#ef4444',
+            onPress: handleDeleteAction,
+            subtitle: 'Permanently remove',
+          },
+        ]}
+      />
+      
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        visible={showDeleteConfirm}
+        title="Delete Transaction"
+        message={`Are you sure you want to delete "${selectedTransaction?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        onConfirm={confirmDeleteTransaction}
+        onCancel={handleCancelDelete}
+      />
+      
+      {/* Success Modal */}
+      <SuccessModal
+        visible={showSuccessModal}
+        message="Transaction deleted successfully!"
+        onClose={() => setShowSuccessModal(false)}
+      />
+
+      {/* Error Modal */}
+      <ErrorModal
+        visible={errorModalVisible}
+        message={errorModalMessage}
+        onClose={() => setErrorModalVisible(false)}
+      />
+
+      {/* Date Picker Modal */}
+      <DatePickerModal
+        visible={showDatePicker}
+        currentDate={currentDate}
+        onClose={() => setShowDatePicker(false)}
+        onDateSelect={handleDateSelect}
+      />
+
+      {/* Debug Modal */}
       <Modal
+        visible={showDebugModal}
         animationType="slide"
         transparent={true}
-        visible={showActionModal}
-        onRequestClose={() => setShowActionModal(false)}
+        onRequestClose={() => setShowDebugModal(false)}
       >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowActionModal(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalContent}
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Manage Transaction</Text>
-            {selectedTransaction && (
-              <Text style={styles.modalSubtitle}>
-                {selectedTransaction.name}
-              </Text>
-            )}
-
-            {/* Edit Button */}
-            <TouchableOpacity
-              onPress={handleEditTransaction}
-              style={[styles.actionButton, { backgroundColor: '#EBF8FF' }]}
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: 'white', height: '50%', padding: 16, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Debug Logs</Text>
+            <ScrollView style={{ flex: 1, marginTop: 8 }}>
+              {debugLogs.map((log, index) => (
+                <Text key={index} style={{ fontFamily: 'monospace', fontSize: 10 }}>{log}</Text>
+              ))}
+            </ScrollView>
+            <TouchableOpacity 
+              onPress={() => setShowDebugModal(false)}
+              style={{ backgroundColor: '#2563eb', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 8 }}
             >
-              <View style={[styles.actionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <Ionicons name="pencil" size={20} color="#3B82F6" />
-              </View>
-              <View style={styles.actionTextContainer}>
-                <Text style={styles.actionTitle}>Edit</Text>
-                <Text style={styles.actionDescription}>Update transaction details</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Delete Button */}
-            <TouchableOpacity
-              onPress={handleDeleteTransaction}
-              style={[styles.actionButton, { backgroundColor: '#FEF2F2' }]}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: '#FECACA' }]}>
-                <Ionicons name="trash" size={20} color="#DC2626" />
-              </View>
-              <View style={styles.actionTextContainer}>
-                <Text style={[styles.actionTitle, { color: '#DC2626' }]}>Delete</Text>
-                <Text style={styles.actionDescription}>Remove this transaction</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Cancel Button */}
-            <TouchableOpacity
-              onPress={() => setShowActionModal(false)}
-              style={[styles.actionButton, styles.cancelButton]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showDeleteConfirm}
-        onRequestClose={() => setShowDeleteConfirm(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { marginHorizontal: 24, borderRadius: 16 }]}>
-            <View style={{ alignItems: 'center', marginBottom: 24 }}>
-              <View style={{
-                width: 64,
-                height: 64,
-                borderRadius: 32,
-                backgroundColor: '#FEE2E2',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 16,
-              }}>
-                <Ionicons name="warning" size={32} color="#DC2626" />
-              </View>
-              <Text style={[styles.modalTitle, { marginBottom: 8 }]}>
-                Delete Transaction
-              </Text>
-              <Text style={[styles.modalSubtitle, { textAlign: 'center' }]}>
-                Are you sure you want to delete this transaction? This action cannot be undone.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={confirmDeleteTransaction}
-              style={[styles.actionButton, styles.confirmButton]}
-            >
-              <Text style={styles.confirmButtonText}>Delete Transaction</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setShowDeleteConfirm(false)}
-              style={[styles.actionButton, styles.cancelButton]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={{ color: 'white', fontWeight: 'bold' }}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Success Modal for Deletion */}
-      <SuccessModal
-        visible={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        message="Transaction has been deleted successfully!"
-      />
-
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
     </SafeAreaView>
   );
 };

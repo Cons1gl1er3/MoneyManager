@@ -1,5 +1,6 @@
+import { BlurView } from 'expo-blur';
 import React, { useState } from 'react';
-import { Dimensions, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -98,6 +99,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 1,
+  },
   tooltipContainer: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -111,13 +121,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     minWidth: 320,
+    zIndex: 2,
   },
   tooltipTitle: {
-    fontSize: 20,
+    fontSize: Platform.OS === 'ios' ? 18 : 20,
     fontWeight: 'bold',
     color: '#1f2937',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: Platform.OS === 'ios' ? 16 : 24,
   },
   tooltipRow: {
     flexDirection: 'row',
@@ -154,6 +165,93 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
     fontSize: 16,
+  },
+  tooltipContent: {
+    backgroundColor: 'white',
+    borderRadius: Platform.OS === 'ios' ? 16 : 20,
+    padding: Platform.OS === 'ios' ? 24 : 32,
+    shadowColor: '#000',
+    shadowOffset: { 
+      width: 0, 
+      height: Platform.OS === 'ios' ? 4 : 8 
+    },
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : 0.3,
+    shadowRadius: Platform.OS === 'ios' ? 8 : 16,
+    elevation: Platform.OS === 'android' ? 16 : 0,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+    minWidth: Platform.OS === 'web' ? 320 : Platform.OS === 'ios' ? 280 : 300,
+    maxWidth: '90%',
+    zIndex: 2,
+  },
+  tooltipAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  tooltipCloseButton: {
+    marginTop: Platform.OS === 'ios' ? 20 : 24,
+    backgroundColor: '#3b82f6',
+    paddingVertical: Platform.OS === 'ios' ? 14 : 16,
+    paddingHorizontal: Platform.OS === 'ios' ? 24 : 32,
+    borderRadius: Platform.OS === 'ios' ? 10 : 12,
+    minHeight: Platform.OS === 'ios' ? 44 : 48,
+    justifyContent: 'center',
+  },
+  tooltipCloseText: {
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: '600',
+    fontSize: Platform.OS === 'ios' ? 16 : 16,
+  },
+  tooltipHeaderCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  tooltipContentCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  tooltipCloseCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tooltipRowContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  tooltipRowLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  tooltipRowValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
   },
 });
 
@@ -204,9 +302,9 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
 
   const formatValue = (value: number): string => {
     if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(1)}M`;
+      return `${(value / 1000000).toFixed(1)}M`;
     } else if (value >= 1000) {
-      return `$${(value / 1000).toFixed(1)}K`;
+      return `${(value / 1000).toFixed(1)}K`;
     }
     return value.toString();
   };
@@ -453,78 +551,115 @@ const BarChartComponent: React.FC<BarChartComponentProps> = ({
 
       {/* Tooltip Modal */}
       <Modal
-        visible={showTooltipModal}
         transparent={true}
+        visible={showTooltipModal && tooltip !== null}
         animationType="fade"
-        onRequestClose={() => setShowTooltipModal(false)}
+        statusBarTranslucent={true}
+        onRequestClose={() => {
+          setShowTooltipModal(false);
+          setTooltip(null);
+        }}
       >
         <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowTooltipModal(false)}
+          style={{ flex: 1 }} 
+          activeOpacity={1} 
+          onPress={() => {
+            setShowTooltipModal(false);
+            setTooltip(null);
+          }}
         >
-          {tooltip && (
-            <View style={styles.tooltipContainer}>
-              <View style={{ alignItems: 'center', marginBottom: 24 }}>
-                <Text style={styles.tooltipTitle}>
-                   {tooltip.month}
-                </Text>
-              </View>
-              
-              <View style={{ gap: 16 }}>
-                <View style={styles.tooltipRow}>
-                  <View style={styles.tooltipLabelContainer}>
-                    <View style={[styles.legendColor, { backgroundColor: '#22c55e', marginRight: 12 }]} />
-                    <Text style={{ color: '#374151', fontWeight: '500', fontSize: 16 }}>Income:</Text>
-                  </View>
-                  <View style={styles.tooltipValueContainer}>
-                    <Text style={{ color: '#22c55e', fontWeight: 'bold', fontSize: 18 }}>
-                      {formatCurrency(tooltip.income)}
-                    </Text>
-                  </View>
-                </View>
-                
-                <View style={styles.tooltipRow}>
-                  <View style={styles.tooltipLabelContainer}>
-                    <View style={[styles.legendColor, { backgroundColor: '#ef4444', marginRight: 12 }]} />
-                    <Text style={{ color: '#374151', fontWeight: '500', fontSize: 16 }}>Expense:</Text>
-                  </View>
-                  <View style={styles.tooltipValueContainer}>
-                    <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 18 }}>
-                      {formatCurrency(tooltip.expense)}
-                    </Text>
-                  </View>
-                </View>
-                
-                <View style={styles.tooltipDivider}>
-                  <View style={styles.tooltipRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#374151', fontWeight: '600', fontSize: 16 }}>Net:</Text>
-                    </View>
-                    <View style={styles.tooltipValueContainer}>
-                      <Text 
-                        style={{ 
-                          fontWeight: 'bold', 
-                          fontSize: 20,
-                          color: tooltip.income >= tooltip.expense ? '#22c55e' : '#ef4444'
-                        }}
-                      >
-                        {tooltip.income >= tooltip.expense ? '+' : ''}
-                        {formatCurrency(tooltip.income - tooltip.expense)}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-              
+          <BlurView 
+            intensity={50} 
+            tint={Platform.OS === 'ios' ? 'systemMaterialDark' : 'dark'}
+            style={{ flex: 1 }}
+          >
+            {/* Dark overlay for better focus */}
+            <View style={{ 
+              flex: 1, 
+              backgroundColor: 'rgba(0,0,0,0.4)', 
+              zIndex: 100,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingHorizontal: Platform.OS === 'ios' ? 20 : 24,
+              paddingVertical: Platform.OS === 'ios' ? 40 : 24,
+            }}>
               <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setShowTooltipModal(false)}
+                activeOpacity={1} 
+                onPress={(e) => e.stopPropagation()}
+                style={[styles.tooltipContent, {
+                  width: Platform.OS === 'ios' ? '90%' : 'auto',
+                  alignSelf: 'center',
+                }]}
               >
-                <Text style={styles.closeButtonText}>Close</Text>
+                <Text style={styles.tooltipTitle}>
+                  {tooltip?.month}
+                </Text>
+                
+                {/* Income Row */}
+                <View style={styles.tooltipRow}>
+                  <View style={styles.tooltipLabelContainer}>
+                    <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
+                    <Text style={[styles.legendText, { fontSize: 16 }]}>Income:</Text>
+                  </View>
+                  <View style={styles.tooltipValueContainer}>
+                    <Text style={[styles.tooltipAmount, { 
+                      fontSize: 16, 
+                      marginBottom: 0, 
+                      color: '#22c55e' 
+                    }]}>
+                      {formatCurrency(tooltip?.income || 0)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Expense Row */}
+                <View style={styles.tooltipRow}>
+                  <View style={styles.tooltipLabelContainer}>
+                    <View style={[styles.legendColor, { backgroundColor: '#ef4444' }]} />
+                    <Text style={[styles.legendText, { fontSize: 16 }]}>Expense:</Text>
+                  </View>
+                  <View style={styles.tooltipValueContainer}>
+                    <Text style={[styles.tooltipAmount, { 
+                      fontSize: 16, 
+                      marginBottom: 0, 
+                      color: '#ef4444' 
+                    }]}>
+                      {formatCurrency(tooltip?.expense || 0)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Net Row */}
+                <View style={[styles.tooltipRow, styles.tooltipDivider]}>
+                  <View style={styles.tooltipLabelContainer}>
+                    <View style={[styles.legendColor, { 
+                      backgroundColor: '#3b82f6' 
+                    }]} />
+                    <Text style={[styles.legendText, { fontSize: 16, fontWeight: 'bold' }]}>Net:</Text>
+                  </View>
+                  <View style={styles.tooltipValueContainer}>
+                    <Text style={[styles.tooltipAmount, { 
+                      fontSize: 18, 
+                      marginBottom: 0,
+                      color: (tooltip?.income || 0) - (tooltip?.expense || 0) >= 0 ? '#22c55e' : '#ef4444'
+                    }]}>
+                      {formatCurrency((tooltip?.income || 0) - (tooltip?.expense || 0))}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.tooltipCloseButton}
+                  onPress={() => {
+                    setShowTooltipModal(false);
+                    setTooltip(null);
+                  }}
+                >
+                  <Text style={styles.tooltipCloseText}>Close</Text>
+                </TouchableOpacity>
               </TouchableOpacity>
             </View>
-          )}
+          </BlurView>
         </TouchableOpacity>
       </Modal>
     </View>

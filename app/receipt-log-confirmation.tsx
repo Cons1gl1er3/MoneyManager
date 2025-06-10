@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite';
+import { getCategoriesByType, getUserAccounts, logTransaction } from '../lib/appwrite';
 
 // Import mock data directly
 const mockData = require('../assets/mock-receipt-transactions.json');
@@ -51,14 +51,14 @@ const ReceiptLogConfirmation = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load accounts and categories first
-        const [userAccounts, systemCategories] = await Promise.all([
+        // Load accounts and expense categories only (OCR only supports expense)
+        const [userAccounts, expenseCategories] = await Promise.all([
           getUserAccounts(),
-          getCategories()
+          getCategoriesByType('expense')
         ]);
         
         setAccounts(userAccounts);
-        setCategories(systemCategories as unknown as Category[]);
+        setCategories(expenseCategories as unknown as Category[]);
 
         // If we have edited transactions in params, use those
         if (params.editedTransaction && params.editedIndex) {
@@ -70,6 +70,8 @@ const ReceiptLogConfirmation = () => {
             const updated = [...prev];
             updated[editedIndex] = {
               ...editedTransaction,
+              // Force type to expense since OCR only supports expense
+              type: 'expense',
               accountId: editedTransaction.accountId,
               categoryId: editedTransaction.categoryId
             };
@@ -79,10 +81,10 @@ const ReceiptLogConfirmation = () => {
           // Only load mock data if we don't have any transactions
           setRawTransactions(mockData.transactions);
 
-          // Process transactions by matching names to IDs
+          // Process transactions by matching names to IDs and force all to expense type
           const processed = mockData.transactions.map((transaction: RawTransaction) => {
             const account = userAccounts.find(acc => acc.name === transaction.accountName);
-            const category = systemCategories.find(cat => cat.name === transaction.categoryName);
+            const category = expenseCategories.find(cat => cat.name === transaction.categoryName);
 
             if (!account || !category) {
               throw new Error(`Could not find matching account or category for transaction: ${transaction.name}`);
@@ -90,6 +92,7 @@ const ReceiptLogConfirmation = () => {
 
             return {
               ...transaction,
+              type: 'expense' as const, // Force all OCR transactions to be expense
               accountId: account.$id,
               categoryId: category.$id
             };

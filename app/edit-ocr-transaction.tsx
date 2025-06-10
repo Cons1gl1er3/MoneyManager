@@ -1,12 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
-import { Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useColorScheme,
+  View
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCategories, getUserAccounts } from '../lib/appwrite';
+import CustomPicker from '../components/CustomPicker';
+import { getCategoriesByType, getUserAccounts } from '../lib/appwrite';
 
 interface Transaction {
   name: string;
@@ -34,7 +43,21 @@ const EditOcrTransaction = () => {
   const [originalTransaction, setOriginalTransaction] = useState<Transaction | null>(null);
 
   const theme = useColorScheme();
-  const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
+  const isDarkMode = theme === 'dark';
+  const backgroundColor = isDarkMode ? '#000000' : '#FFFFFF';
+
+  // Load categories based on transaction type
+  const loadCategories = async (transactionType: 'income' | 'expense') => {
+    try {
+      console.log(`Loading categories for type: ${transactionType}`);
+      const categoriesData = await getCategoriesByType(transactionType);
+      setCategories(categoriesData);
+      console.log(`Loaded ${categoriesData.length} categories for ${transactionType}`);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      Alert.alert('Error', `Failed to load ${transactionType} categories. Please try again.`);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -44,41 +67,45 @@ const EditOcrTransaction = () => {
           const transaction = JSON.parse(params.transaction as string) as Transaction;
           setOriginalTransaction(transaction);
           setName(transaction.name);
-          setType(transaction.type);
+          // Force type to be expense since OCR only supports expense transactions
+          setType('expense');
           setAmount(transaction.amount.toString());
           setNote(transaction.note);
           setSelectedDate(new Date(transaction.date));
 
           // Load accounts and categories
-          const [userAccounts, systemCategories] = await Promise.all([
-            getUserAccounts(),
-            getCategories()
-          ]);
-          
+          const userAccounts = await getUserAccounts();
           setAccounts(userAccounts);
-          setCategories(systemCategories);
-
-          // Set initial account and category based on names
-          const account = userAccounts.find(acc => acc.name === transaction.accountName);
-          const category = systemCategories.find(cat => cat.name === transaction.categoryName);
           
+          // Set initial account based on name
+          const account = userAccounts.find(acc => acc.name === transaction.accountName);
           if (account) {
             console.log('Found account:', account.name, account.$id);
             setSelectedAccount(account.$id);
           }
-          if (category) {
-            console.log('Found category:', category.name, category.$id);
-            setSelectedCategory(category.$id);
-          }
+          
+          // Load categories based on expense type only
+          await loadCategories('expense');
         }
       } catch (error) {
         console.error('Error loading data:', error);
-        alert('Error loading transaction data. Please try again.');
+        Alert.alert('Error', 'Failed to load initial data.');
       }
     };
 
     loadData();
-  }, [params.transaction]);
+  }, []);
+
+  // Find and set category after categories are loaded
+  useEffect(() => {
+    if (originalTransaction && categories.length > 0) {
+      const category = categories.find(cat => cat.name === originalTransaction.categoryName);
+      if (category) {
+        console.log('Found category:', category.name, category.$id);
+        setSelectedCategory(category.$id);
+      }
+    }
+  }, [categories, originalTransaction]);
 
   const handleSave = () => {
     if (!selectedAccount || !selectedCategory || !amount || isNaN(parseFloat(amount))) {
@@ -120,106 +147,89 @@ const EditOcrTransaction = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 h-full">
-      <View className="flex-1 px-4 pt-12 bg-white dark:bg-black">
-        <TouchableOpacity onPress={() => router.back()} className="absolute top-5 left-4 p-2 bg-gray-300 rounded-full">
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Edit Transaction</Text>
+    <SafeAreaView style={[styles.flex1, { backgroundColor }]}>
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <ScrollView 
+        style={styles.flex1}
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={isDarkMode ? "#fff" : "#000"} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: isDarkMode ? '#fff' : '#000' }]}>Edit Transaction</Text>
+        </View>
 
         {/* Transaction Name Input */}
-        <Text className="text-gray-700 dark:text-gray-400 mb-2">Transaction Name</Text>
+        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Transaction Name</Text>
         <TextInput
           value={name}
           onChangeText={setName}
           placeholder="Enter transaction name"
-          className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-6 text-base text-black dark:text-white"
+          placeholderTextColor={isDarkMode ? '#718096' : '#a0aec0'}
+          style={[styles.input, { 
+            backgroundColor: isDarkMode ? '#1a202c' : '#fff',
+            color: isDarkMode ? '#fff' : '#000',
+            borderColor: isDarkMode ? '#4a5568' : '#d1d5db'
+          }]}
         />
 
         {/* Amount Input */}
-        <Text className="text-gray-700 dark:text-gray-400 mb-2">Amount</Text>
+        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Amount</Text>
         <TextInput
           keyboardType="numeric"
           value={amount}
           onChangeText={setAmount}
           placeholder="Enter amount"
-          className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-4 text-base text-black dark:text-white"
+          placeholderTextColor={isDarkMode ? '#718096' : '#a0aec0'}
+          style={[styles.input, { 
+            backgroundColor: isDarkMode ? '#1a202c' : '#fff',
+            color: isDarkMode ? '#fff' : '#000',
+            borderColor: isDarkMode ? '#4a5568' : '#d1d5db',
+            marginBottom: 16
+          }]}
         />
 
-        {/* Type Toggle */}
-        <View className="flex-row mb-4 space-x-4">
-          <TouchableOpacity
-            onPress={() => setType('expense')}
-            className={`flex-1 py-3 rounded-xl items-center ${type === 'expense' ? 'bg-red-600' : 'bg-gray-200 dark:bg-gray-700'}`}
-          >
-            <Text className={`font-semibold ${type === 'expense' ? 'text-white' : 'text-black dark:text-white'}`}>Expense</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setType('income')}
-            className={`flex-1 py-3 rounded-xl items-center ${type === 'income' ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-700'}`}
-          >
-            <Text className={`font-semibold ${type === 'income' ? 'text-white' : 'text-black dark:text-white'}`}>Income</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Account Selection */}
-        <Text className="text-gray-700 dark:text-gray-400 mb-2">Select Account</Text>
-        <Picker
+        <CustomPicker
+          label="Select Account"
+          items={accounts.map((account) => ({ label: account.name, value: account.$id }))}
           selectedValue={selectedAccount}
           onValueChange={(itemValue) => setSelectedAccount(itemValue)}
-          style={{
-            marginBottom: 20,
-            borderWidth: 1,
-            borderColor: '#4b5563',
-            borderRadius: 12,
-            paddingHorizontal: 8,
-            backgroundColor: '#1F2937',
-            color: '#FFFFFF',
-            fontSize: 16,
-          }}
-        >
-          {accounts.map((account) => (
-            <Picker.Item key={account.$id} label={account.name} value={account.$id} />
-          ))}
-        </Picker>
+          placeholder="Choose an account"
+        />
 
         {/* Category Selection */}
-        <Text className="text-gray-700 dark:text-gray-400 mb-2">Select Category</Text>
-        <Picker
+        <CustomPicker
+          label="Select Category"
+          items={categories.map((category) => ({ label: category.name, value: category.$id }))}
           selectedValue={selectedCategory}
           onValueChange={(itemValue) => setSelectedCategory(itemValue)}
-          style={{
-            marginBottom: 20,
-            borderWidth: 1,
-            borderColor: '#4b5563',
-            borderRadius: 12,
-            paddingHorizontal: 8,
-            backgroundColor: '#1F2937',
-            color: '#FFFFFF',
-            fontSize: 16,
-          }}
-        >
-          {categories.map((category) => (
-            <Picker.Item key={category.$id} label={category.name} value={category.$id} />
-          ))}
-        </Picker>
+          placeholder="Choose a category"
+        />
 
         {/* Note Input */}
-        <Text className="text-gray-700 dark:text-gray-400 mb-2">Note (optional)</Text>
+        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Note (optional)</Text>
         <TextInput
           value={note}
           onChangeText={setNote}
           placeholder="E.g. Dinner, Freelance, etc."
-          className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-6 text-base text-black dark:text-white"
+          placeholderTextColor={isDarkMode ? '#718096' : '#a0aec0'}
+          style={[styles.input, { 
+            backgroundColor: isDarkMode ? '#1a202c' : '#fff',
+            color: isDarkMode ? '#fff' : '#000',
+            borderColor: isDarkMode ? '#4a5568' : '#d1d5db'
+          }]}
         />
 
         {/* Date Selection */}
-        <Text className="text-gray-700 dark:text-gray-400 mb-2">Transaction Date</Text>
+        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Transaction Date</Text>
         <TouchableOpacity
           onPress={() => setShowDatePicker(true)}
-          className="border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl mb-7"
+          style={[styles.dateButton, { borderColor: isDarkMode ? '#4a5568' : '#d1d5db' }]}
         >
-          <Text className="text-gray-500">{selectedDate.toLocaleDateString()}</Text>
+          <Text style={{ color: isDarkMode ? '#cbd5e0' : '#4a5568' }}>{selectedDate.toLocaleDateString()}</Text>
         </TouchableOpacity>
         {showDatePicker && (
           <DateTimePicker
@@ -236,15 +246,82 @@ const EditOcrTransaction = () => {
         {/* Save Button */}
         <TouchableOpacity
           onPress={handleSave}
-          className="flex-row items-center justify-center bg-blue-600 py-4 rounded-xl"
+          style={styles.saveButton}
         >
           <Ionicons name="save" size={20} color="white" />
-          <Text className="text-white text-base font-semibold ml-2">Save Changes</Text>
+          <Text style={styles.saveButtonText}>Save Changes</Text>
         </TouchableOpacity>
-      </View>
-      <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
+      </ScrollView>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  flex1: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 40,
+  },
+  header: {
+    position: 'absolute',
+    top: 10,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 10
+  },
+  backButton: {
+    position: 'absolute',
+    top: 5,
+    left: 0,
+    padding: 8,
+    zIndex: 1,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    flex: 1,
+  },
+  label: {
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  input: {
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    fontSize: 16,
+  },
+  dateButton: {
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 28,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+});
 
 export default EditOcrTransaction; 

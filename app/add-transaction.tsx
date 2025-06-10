@@ -6,9 +6,19 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomPicker from '../components/CustomPicker';
+import ErrorModal from '../components/ErrorModal';
 import SuccessModal from '../components/SuccessModal';
 import TypeToggleButton from '../components/TypeToggleButton';
-import { getCategories, getUserAccounts, logTransaction } from '../lib/appwrite';
+import { getCategoriesByType, getUserAccounts, logTransaction } from '../lib/appwrite';
+
+// Fallback income categories
+const fallbackIncomeCategories = [
+  { $id: 'temp-salary', name: 'Lương', icon: 'wallet-outline', color: '#22C55E' },
+  { $id: 'temp-allowance', name: 'Tiền phụ cấp', icon: 'card-outline', color: '#10B981' },
+  { $id: 'temp-bonus', name: 'Tiền thưởng', icon: 'trophy-outline', color: '#34D399' },
+  { $id: 'temp-freelance', name: 'Freelance', icon: 'laptop-outline', color: '#6EE7B7' },
+  { $id: 'temp-investment', name: 'Đầu tư', icon: 'trending-up-outline', color: '#059669' }
+];
 
 const AddTransaction = () => {
   const router = useRouter();
@@ -25,6 +35,8 @@ const AddTransaction = () => {
   const [isLoading, setIsLoading] = useState(false); // Loading state for saving transaction
   const [showSuccessModal, setShowSuccessModal] = useState(false); // Success modal state
   const [savedTransaction, setSavedTransaction] = useState(null); // Store saved transaction data
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
 
   // Platform-specific styles
   const platformStyles = StyleSheet.create({
@@ -191,16 +203,52 @@ const AddTransaction = () => {
     return formattedText.replace(/\./g, '');
   };
 
+  // Load categories based on transaction type
+  const loadCategories = async (transactionType: 'income' | 'expense') => {
+    try {
+      console.log(`Loading categories for type: ${transactionType}`);
+      const categoriesData = await getCategoriesByType(transactionType);
+      console.log(`Raw categories data:`, categoriesData);
+      
+      // If no income categories found, use fallback
+      if (transactionType === 'income' && categoriesData.length === 0) {
+        console.log('No income categories in database, using fallback categories');
+        setCategories(fallbackIncomeCategories);
+        console.log(`Using ${fallbackIncomeCategories.length} fallback income categories`);
+        return;
+      }
+      
+      setCategories(categoriesData);
+      // Reset selected category when type changes
+      setSelectedCategory(null);
+      console.log(`Loaded ${categoriesData.length} categories for ${transactionType}`);
+      
+      if (categoriesData.length === 0) {
+        console.warn(`No categories found for type: ${transactionType}. You may need to run admin setup.`);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      
+      // If error and it's income, use fallback
+      if (transactionType === 'income') {
+        console.log('Error loading income categories, using fallback');
+        setCategories(fallbackIncomeCategories);
+        return;
+      }
+      
+      setErrorModalMessage(`Failed to load ${transactionType} categories. Please try again.`);
+      setErrorModalVisible(true);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [userAccounts, systemCategories] = await Promise.all([
-          getUserAccounts(),
-          getCategories()
-        ]);
-        
+        const userAccounts = await getUserAccounts();
         setAccounts(userAccounts);
-        setCategories(systemCategories);
+        
+        // Load categories for initial type (expense)
+        await loadCategories(type);
       } catch (error) {
         console.error('Error loading data:', error);
         Alert.alert('Error', 'Failed to load data. Please try again.');
@@ -210,92 +258,88 @@ const AddTransaction = () => {
     loadData();
   }, []);
 
+  // Load categories when transaction type changes
+  useEffect(() => {
+    loadCategories(type);
+  }, [type]);
+
   // Handle account and category selection
   const handleSubmit = async () => {
     if (isLoading) return; // Prevent multiple submissions
     
+    // Simplified error handling
+    const showError = (message: string) => {
+      setErrorModalMessage(message);
+      setErrorModalVisible(true);
+    };
+
+    const rawAmount = getRawNumber(amount);
+    const payload = {
+      name: name.trim(),
+      accountID: selectedAccount,
+      categoryID: selectedCategory,
+      amount: parseFloat(rawAmount),
+      isIncome: type === 'income',
+      note: note.trim(),
+      transactionDate: selectedDate.toISOString()
+    };
+    
+    console.log('--- Attempting to Add Transaction ---');
+    console.log('Payload:', JSON.stringify(payload, null, 2));
+
+    // --- Validation ---
+    if (!payload.accountID || !payload.categoryID) {
+      console.log('Validation failed: Account or Category not selected.');
+      return showError('Please fill all required fields: Money Source and Category.');
+    }
+    
+    // Check if using temporary category
+    if (payload.categoryID.startsWith('temp-')) {
+      console.log('Warning: Using temporary category');
+      return showError('⚠️ You are using a temporary category.\n\nPlease:\n1. Go to Admin Setup page\n2. Click "Convert 5 Categories to Income" or add via Appwrite Console\n3. Return here to add transactions with real categories');
+    }
+    
+    if (!payload.amount || isNaN(payload.amount) || payload.amount <= 0) {
+      console.log('Validation failed: Invalid amount.');
+      return showError('Please enter a valid amount greater than 0.');
+    }
+    if (!payload.name) {
+      console.log('Validation failed: Name is empty.');
+      return showError('Please enter a transaction name.');
+    }
+    
     setIsLoading(true);
     
     try {
-      // Get raw amount value for validation
-      const rawAmount = getRawNumber(amount);
-      
-      // Validation
-      if (!selectedAccount || !selectedCategory || !rawAmount || isNaN(parseFloat(rawAmount))) {
-        Alert.alert(
-          'Validation Error',
-          'Please fill all required fields correctly.',
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      if (parseFloat(rawAmount) <= 0) {
-        Alert.alert(
-          'Invalid Amount',
-          'Please enter a valid amount greater than 0.',
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      if (!name.trim()) {
-        Alert.alert(
-          'Missing Transaction Name',
-          'Please enter a transaction name.',
-          [{ text: 'OK', style: 'default' }]
-        );
-        return;
-      }
-
-      console.log('AddTransaction: Starting to save transaction...');
-      
-      // Call logTransaction with selected data
-      const accountID = selectedAccount; // Get the selected account ID
-      const categoryID = selectedCategory; // Get the selected category ID
-      const isIncome = type === 'income'; // Determine if it's income or expense
-      const transactionDate = selectedDate.toISOString(); // Use the selected date
-
-      console.log('AddTransaction: Transaction data:', {
-        name: name.trim(),
-        accountID,
-        categoryID,
-        amount: parseFloat(rawAmount),
-        isIncome,
-        note: note.trim(),
-        transactionDate
-      });
-
-      const transaction = await logTransaction(
-        name.trim(), 
-        accountID, 
-        categoryID, 
-        parseFloat(rawAmount), 
-        isIncome, 
-        note.trim(), 
-        transactionDate
+      console.log('Calling logTransaction API...');
+      const result = await logTransaction(
+        payload.name, 
+        payload.accountID, 
+        payload.categoryID, 
+        payload.amount, 
+        payload.isIncome, 
+        payload.note, 
+        payload.transactionDate
       );
       
-      console.log('AddTransaction: Transaction saved successfully:', transaction.$id);
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create transaction');
+      }
+      
+      console.log('API call successful:', result.transaction?.$id);
       
       // Store transaction data and show success modal
       setSavedTransaction({
-        name: name.trim(),
-        amount: parseFloat(rawAmount),
-        type: isIncome ? 'Income' : 'Expense'
+        name: payload.name,
+        amount: payload.amount,
+        type: payload.isIncome ? 'Income' : 'Expense'
       });
       setShowSuccessModal(true);
       
     } catch (error) {
-      console.error('AddTransaction: Error logging transaction:', error);
-      
-      // Show detailed error message
+      console.error('AddTransaction Error:', error);
       const errorMessage = error.message || 'An unknown error occurred while saving the transaction.';
-      Alert.alert(
-        'Error Saving Transaction ❌',
-        `Failed to save transaction: ${errorMessage}\n\nPlease try again or check your internet connection.`,
-        [{ text: 'OK', style: 'default' }]
-      );
+      showError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -364,17 +408,35 @@ const AddTransaction = () => {
           label="Select Money Source"
           items={accounts.map((account) => ({ label: account.name, value: account.$id }))}
           selectedValue={selectedAccount}
-          onValueChange={(itemValue) => setSelectedAccount(itemValue)}
+          onValueChange={(itemValue) => {
+            console.log('ACCOUNT SELECTED:', itemValue);
+            setSelectedAccount(itemValue);
+          }}
           placeholder="Choose an account"
         />
 
         {/* Category Selection */}
         <CustomPicker
           label="Select Category"
-          items={categories.map((category) => ({ label: category.name, value: category.$id }))}
+          items={categories.length === 0 && type === 'income' ? 
+            [{ label: 'No income categories found. Please run admin setup first.', value: null }] :
+            categories.map((category) => ({ label: category.name, value: category.$id }))
+          }
           selectedValue={selectedCategory}
-          onValueChange={(itemValue) => setSelectedCategory(itemValue)}
-          placeholder="Choose a category"
+          onValueChange={(itemValue) => {
+            if (itemValue === null) {
+              // Show helpful message
+              setErrorModalMessage('No categories available. Please:\n\n1. Go to Admin Setup page\n2. Click "Add Income Categories"\n3. Return here to add transactions');
+              setErrorModalVisible(true);
+              return;
+            }
+            console.log('CATEGORY SELECTED:', itemValue);
+            setSelectedCategory(itemValue);
+          }}
+          placeholder={categories.length === 0 && type === 'income' ? 
+            'Please run admin setup first' : 
+            'Choose a category'
+          }
         />
 
         {/* Note Input */}
@@ -548,6 +610,13 @@ const AddTransaction = () => {
           }}
           message="Transaction has been saved successfully!"
           transactionDetails={savedTransaction}
+        />
+
+        {/* Error Modal */}
+        <ErrorModal
+          visible={errorModalVisible}
+          message={errorModalMessage}
+          onClose={() => setErrorModalVisible(false)}
         />
       </ScrollView>
       <StatusBar style="dark" />

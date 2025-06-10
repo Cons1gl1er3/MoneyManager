@@ -4,7 +4,11 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserAccounts } from '../lib/appwrite';
+import ActionModal from '../components/ActionModal';
+import ConfirmModal from '../components/ConfirmModal';
+import ErrorModal from '../components/ErrorModal';
+import SuccessModal from '../components/SuccessModal';
+import { deleteAccount, getUserAccounts } from '../lib/appwrite';
 
 interface Account {
   $id: string;
@@ -16,6 +20,15 @@ const Accounts = () => {
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Map account names to icons
   const getAccountIcon = (name: string): keyof typeof IconType.glyphMap => {
@@ -60,6 +73,77 @@ const Accounts = () => {
     return accounts.reduce((total, account) => total + account.balance, 0);
   };
 
+  // Handle edit account
+  const handleEditAccount = (account: Account) => {
+    // Close the modal first
+    setShowActionModal(false);
+    setSelectedAccount(null);
+    
+    // Then navigate to edit page
+    router.push({
+      pathname: '/edit-account',
+      params: { account: JSON.stringify(account) }
+    });
+  };
+
+  // Handle account click to show action modal
+  const handleAccountClick = (account: Account) => {
+    setSelectedAccount(account);
+    setShowActionModal(true);
+  };
+
+  // Handle delete account
+  const handleDeleteAccount = (account: Account) => {
+    // Check if it's the default account
+    if (account.name === 'Tiền mặt') {
+      setErrorModalMessage('Cannot delete the default money source.');
+      setErrorModalVisible(true);
+      setShowActionModal(false); // Close action modal even if error
+      return;
+    }
+    
+    // First, close the action modal
+    setShowActionModal(false);
+    
+    // Then, set the account to delete and show the confirm modal after a short delay
+    // This helps prevent modal-on-modal issues on iOS
+    setTimeout(() => {
+      setAccountToDelete(account);
+      setShowDeleteConfirm(true);
+    }, 300);
+  };
+
+  // Confirm delete account
+  const confirmDeleteAccount = async () => {
+    if (!accountToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await deleteAccount(accountToDelete.$id);
+      
+      // Close all modals first
+      setShowDeleteConfirm(false);
+      setShowActionModal(false);
+      setSelectedAccount(null);
+      setAccountToDelete(null);
+      
+      // Refresh data
+      await fetchAccounts();
+      
+      // Show success message after a brief delay to ensure modals are closed
+      setTimeout(() => {
+        setSuccessMessage(`Money source "${accountToDelete.name}" has been deleted and all transactions transferred to "Tiền mặt".`);
+        setShowSuccessModal(true);
+      }, 100);
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      setErrorModalMessage(error.message || 'Failed to delete money source. Please try again.');
+      setErrorModalVisible(true);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -82,7 +166,7 @@ const Accounts = () => {
           {/* Total Balance Card */}
           <View className="mx-4 mb-6 bg-blue-50 p-6 rounded-xl">
             <Text className="text-lg text-gray-600 mb-2">Total Balance</Text>
-            <Text className={`text-3xl font-bold ${calculateTotalBalance() < 0 ? 'text-red-500' : 'text-blue-600'}`}>
+            <Text className={`text-3xl font-bold ${calculateTotalBalance() < 0 ? 'text-red-500' : 'text-green-600'}`}>
               {formatVND(calculateTotalBalance())}
             </Text>
           </View>
@@ -96,9 +180,10 @@ const Accounts = () => {
             ) : accounts.length > 0 ? (
               <View className="space-y-4">
                 {accounts.map(account => (
-                  <TouchableOpacity
-                    key={account.$id}
-                    className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm"
+                  <TouchableOpacity 
+                    key={account.$id} 
+                    className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm active:bg-gray-50"
+                    onPress={() => handleAccountClick(account)}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-row items-center flex-1">
@@ -115,6 +200,7 @@ const Accounts = () => {
                           </Text>
                         </View>
                       </View>
+                      
                       <View className="items-end">
                         <Text className={`text-xl font-bold ${account.balance < 0 ? 'text-red-500' : 'text-green-600'}`}>
                           {formatVND(account.balance)}
@@ -145,6 +231,71 @@ const Accounts = () => {
             )}
           </ScrollView>
         </View>
+        
+        {/* Action Modal */}
+        <ActionModal
+          visible={showActionModal}
+          onClose={() => {
+            setShowActionModal(false);
+            setSelectedAccount(null);
+          }}
+          title={selectedAccount?.name || ''}
+          balance={selectedAccount?.balance}
+          actions={[
+            {
+              label: 'Edit',
+              subtitle: 'Update money source details',
+              icon: 'pencil',
+              color: '#2563eb',
+              onPress: () => {
+                if (selectedAccount) {
+                  handleEditAccount(selectedAccount);
+                }
+              }
+            },
+            {
+              label: 'Delete',
+              subtitle: 'Remove this money source',
+              icon: 'trash',
+              color: '#dc2626',
+              onPress: () => {
+                if (selectedAccount) {
+                  handleDeleteAccount(selectedAccount);
+                }
+              }
+            }
+          ]}
+        />
+        
+        {/* Delete Confirmation Modal */}
+        <ConfirmModal
+          visible={showDeleteConfirm}
+          title="Delete Money Source"
+          message={`Are you sure you want to delete "${accountToDelete?.name}"? All transactions will be transferred to the default money source.`}
+          confirmText={isDeleting ? "Deleting..." : "Delete"}
+          cancelText="Cancel"
+          onConfirm={confirmDeleteAccount}
+          onCancel={() => {
+            setShowDeleteConfirm(false);
+            setAccountToDelete(null);
+          }}
+          confirmButtonColor="#dc2626"
+        />
+
+        {/* Error/Success Modal */}
+        <ErrorModal
+          visible={errorModalVisible}
+          message={errorModalMessage}
+          onClose={() => setErrorModalVisible(false)}
+        />
+
+        {/* Success Modal */}
+        <SuccessModal
+          visible={showSuccessModal}
+          onClose={() => setShowSuccessModal(false)}
+          title="Deleted Successfully!"
+          message={successMessage}
+        />
       </SafeAreaView>
     </>
   );

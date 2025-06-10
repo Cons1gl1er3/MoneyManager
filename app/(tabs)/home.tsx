@@ -1,16 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
 import { useIsFocused } from '@react-navigation/native';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect, useRouter } from 'expo-router';
+import ActionModal from '../../components/ActionModal';
 import BarChartComponent from '../../components/BarChart';
-import CustomButton from '../../components/CustomButton';
+import ConfirmModal from '../../components/ConfirmModal';
+import DatePickerModal from '../../components/DatePickerModal';
+import ErrorModal from '../../components/ErrorModal';
+import FloatingActionButton from '../../components/FloatingActionButton';
+import MonthSelector from '../../components/MonthSelector';
+import SuccessModal from '../../components/SuccessModal';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { getCurrentUser, getTransactions, getUserAccounts, logout } from '../../lib/appwrite';
+import { deleteAccount, getCurrentUser, getTransactions, getUserAccounts } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -122,9 +127,17 @@ const Home: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [animation] = useState(new Animated.Value(0));
   const insets = useSafeAreaInsets();
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -132,7 +145,8 @@ const Home: React.FC = () => {
   
     // Prevent future months
     if (newDate > new Date()) {
-      alert("You cannot select a future month.");
+      setErrorModalMessage('You cannot select a future month.');
+      setErrorModalVisible(true);
       return;
     }
   
@@ -167,7 +181,7 @@ const Home: React.FC = () => {
         console.log('No user ID available, skipping transaction fetch');
         return;
       }
-      const allTransactions = await getTransactions(userID);
+      const allTransactions = await getTransactions(userID, forceRefresh);
       setTransactions(allTransactions);
     } catch (error) {
       console.error('Home: Error fetching transactions:', error);
@@ -232,13 +246,12 @@ const Home: React.FC = () => {
     return 'wallet-outline'; // Default icon
   };
 
-  const calculateMonthlyData = (allTransactions: Transaction[]): MonthlyData[] => {
-    const currentDate = new Date();
+  const calculateMonthlyData = (allTransactions: Transaction[], targetDate: Date): MonthlyData[] => {
     const monthlyStats: { [key: string]: { income: number; expense: number } } = {};
 
-    // Lấy dữ liệu 6 tháng gần nhất
+    // Lấy dữ liệu 6 tháng gần nhất tính từ targetDate
     for (let i = 5; i >= 0; i--) {
-      const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+      const date = new Date(targetDate.getFullYear(), targetDate.getMonth() - i, 1);
       const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
       const monthLabel = date.toLocaleDateString('en-US', { month: 'short' });
       
@@ -265,8 +278,12 @@ const Home: React.FC = () => {
     return Object.entries(monthlyStats).map(([key, values]) => {
       const [year, month] = key.split('-');
       const date = new Date(parseInt(year), parseInt(month), 1);
+      
+      // Show month + year for all months
+      const monthLabel = `${date.toLocaleDateString('en-US', { month: 'short' })} ${year}`;
+      
       return {
-        month: date.toLocaleDateString('en-US', { month: 'short' }),
+        month: monthLabel,
         income: values.income,
         expense: values.expense,
       };
@@ -291,6 +308,85 @@ const Home: React.FC = () => {
     }
   };
 
+  // Handle delete account
+  const handleDeleteAccount = (account: Account) => {
+    // Check if it's the default account
+    if (account.name === 'Tiền mặt') {
+      setErrorModalMessage('Cannot delete the default money source "Tiền mặt".');
+      setErrorModalVisible(true);
+      return;
+    }
+    
+    setAccountToDelete(account);
+    setShowDeleteConfirm(true);
+  };
+
+  // Confirm delete account
+  const confirmDeleteAccount = async () => {
+    if (!accountToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await deleteAccount(accountToDelete.$id);
+      
+      // Close all modals first
+      setShowDeleteConfirm(false);
+      setShowActionModal(false);
+      setSelectedAccount(null);
+      setAccountToDelete(null);
+      
+      // Refresh data
+      await fetchAccounts();
+      await fetchTransactions(true);
+      
+      // Show success message after a brief delay to ensure modals are closed
+      setTimeout(() => {
+        setSuccessMessage(`Money source "${accountToDelete.name}" has been deleted and all transactions transferred to "Tiền mặt".`);
+        setShowSuccessModal(true);
+      }, 100);
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      setErrorModalMessage(error.message || 'Failed to delete money source. Please try again.');
+      setErrorModalVisible(true);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Handle edit account
+  const handleEditAccount = (account: Account) => {
+    // Close the modal first
+    setShowActionModal(false);
+    setSelectedAccount(null);
+    
+    // Then navigate to edit page
+    router.push({
+      pathname: '/edit-account',
+      params: { account: JSON.stringify(account) }
+    });
+  };
+
+  // Handle account click to show action modal
+  const handleAccountClick = (account: Account) => {
+    setSelectedAccount(account);
+    setShowActionModal(true);
+  };
+
+  // Handle date selection from picker
+  const handleDateSelect = (newDate: Date) => {
+    setCurrentDate(newDate);
+  };
+
+  // Debug function for touch issues
+  const debugTouchIssue = () => {
+    console.log('=== HOME TOUCH DEBUG ===');
+    console.log('Platform:', Platform.OS);
+    console.log('Accounts length:', accounts.length);
+    console.log('ShowActionModal:', showActionModal);
+    console.log('ShowDatePicker:', showDatePicker);
+    console.log('========================');
+  };
+
   useEffect(() => {
     fetchUserID();
   }, []);
@@ -304,7 +400,7 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     if (transactions.length > 0) {
-      const monthly = calculateMonthlyData(transactions);
+      const monthly = calculateMonthlyData(transactions, currentDate);
       setMonthlyData(monthly);
       
       const filtered = filterTransactionsByMonth(transactions, currentDate);
@@ -349,16 +445,7 @@ const Home: React.FC = () => {
     legendFontSize: 12,
   }));
 
-  const handleLogout = async () => {
-    try {
-      await logout(); 
-      logoutUser();   
   
-      router.replace('/sign-in');
-    } catch (err) {
-      console.warn('Logout failed:', err);
-    }
-  };
 
   // Get transactions for a specific account
   const getTransactionsByAccount = (accountId: string): Transaction[] => {
@@ -375,113 +462,86 @@ const Home: React.FC = () => {
     return recentTransactions;
   };
 
-  const toggleMenu = () => {
-    const toValue = isMenuOpen ? 0 : 1;
-    Animated.spring(animation, {
-      toValue,
-      friction: 5,
-      useNativeDriver: true,
-    }).start();
-    setIsMenuOpen(!isMenuOpen);
-  };
-
-  const menuItems = [
-    {
-      title: 'Add Transaction',
-      icon: 'add-circle' as const,
-      route: '/add-transaction' as const,
-    },
-    {
-      title: 'Scan Receipt',
-      icon: 'scan' as const,
-      route: '/scan' as const,
-    },
-    {
-      title: 'Assistant',
-      icon: 'chatbubble-ellipses' as const,
-      route: '/chatbot' as const,
-    },
-  ];
-
-  const renderMenuItems = () => {
-    return menuItems.map((item, index) => {
-      const translateY = animation.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, -50 * (index + 1)], // Reduced spacing
-      });
-
-      const opacity = animation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0, 0, 1],
-      });
+  useEffect(() => {
+    debugTouchIssue();
+  }, [accounts, showActionModal, showDatePicker]);
 
       return (
-        <Animated.View
-          key={item.title}
-          style={[
-            styles.menuItem,
-            {
-              transform: [{ translateY }],
-              opacity,
-            },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={() => {
-              setIsMenuOpen(false);
-              router.push(item.route);
-            }}
-          >
-            <Ionicons name={item.icon} size={24} color="white" />
-            <Text style={styles.menuText}>{item.title}</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      );
-    });
-  };
-
-  return (
     <View className="bg-gray-50 flex-1">
       {/* Header */}
-      <View style={{ paddingTop: insets.top + 10, paddingHorizontal: 16, backgroundColor: '#F9FAFB' }}>
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-2xl font-bold">Home</Text>
-          <TouchableOpacity onPress={toggleMenu}>
-            <Ionicons name="settings-outline" size={24} color="black" />
-          </TouchableOpacity>
+      <View style={{ paddingTop: insets.top }}>
+        <View className="px-4 pt-4 my-5">
+          <View className="flex-row justify-between items-center">
+            <Text className="text-2xl font-bold text-black">Home</Text>
+            <TouchableOpacity onPress={() => router.push('/settings')}>
+              <Ionicons name="settings-outline" size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Month Navigator */}
-        <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => changeMonth(-1)}>
-            <Ionicons name="chevron-back" size={24} color="#4B5563" />
-          </TouchableOpacity>
-          <View className="flex-row items-center">
-            <Ionicons name="calendar-outline" size={20} color="#4B5563" />
-            <Text className="text-lg font-semibold ml-2">{currentDate.toLocaleString('default', { month: 'long' })} {currentDate.getFullYear()}</Text>
-          </View>
-          <TouchableOpacity onPress={() => changeMonth(1)}>
-            <Ionicons name="chevron-forward" size={24} color="#4B5563" />
-          </TouchableOpacity>
+        <MonthSelector 
+          currentDate={currentDate} 
+          onChangeMonth={changeMonth}
+          onDatePress={() => setShowDatePicker(true)}
+        />
         </View>
-      </View>
-      
+
       {/* Main Content */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        className="flex-1 px-4"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        style={{ 
+          flex: 1, 
+          paddingHorizontal: 16,
+        }}
+        contentContainerStyle={{ 
+          paddingBottom: insets.bottom + 100,
+          flexGrow: 1,
+        }}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+        bounces={Platform.OS === 'ios'}
       >
         {/* Income & Spending Cards */}
-        <View className="flex-row justify-between items-center mb-6">
-          <View className="flex-1 bg-green-50 p-4 rounded-lg mr-3">
-            <Text className="text-lg font-medium">Income</Text>
-            <Text className="text-md font-bold mt-1">{formatVND(incomeTotal)}</Text>
+        <View style={{ 
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: 24 
+        }}>
+          <View style={{
+            flex: 1,
+            backgroundColor: '#f0fdf4',
+            padding: 16,
+            borderRadius: 8,
+            marginRight: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.1,
+            shadowRadius: 2,
+            elevation: 2,
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: '500', color: '#111827' }}>Income</Text>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', marginTop: 4, color: '#059669' }}>
+              {formatVND(incomeTotal)}
+            </Text>
           </View>
-          <View className="flex-1 bg-red-50 p-4 rounded-lg ml-3">
-            <Text className="text-lg font-medium">Spending</Text>
-            <Text className="text-md font-bold mt-1">{formatVND(expenseTotal)}</Text>
+          <View style={{
+            flex: 1,
+            backgroundColor: '#fef2f2',
+            padding: 16,
+            borderRadius: 8,
+            marginLeft: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.1,
+            shadowRadius: 2,
+            elevation: 2,
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: '500', color: '#111827' }}>Spending</Text>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', marginTop: 4, color: '#dc2626' }}>
+              {formatVND(expenseTotal)}
+            </Text>
           </View>
         </View>
 
@@ -516,16 +576,62 @@ const Home: React.FC = () => {
         </View>
 
         {/* Money Source Section */}
-        <View className="mt-6 px-4">
-          <View className="flex-row justify-between items-center">
-            <Text className="text-xl font-bold">Money Source</Text>
-            <TouchableOpacity onPress={() => router.push('/add-account')}>
-              <Text className="text-green-600">CREATE</Text>
-            </TouchableOpacity>
+        <View style={{ 
+          marginTop: 24, 
+          paddingHorizontal: 16,
+          zIndex: 1,
+          position: 'relative',
+        }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            justifyContent: 'space-between', 
+            alignItems: 'center' 
+          }}>
+            <Text style={{ 
+              fontSize: 20, 
+              fontWeight: 'bold',
+              color: '#111827',
+            }}>Money Source</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity 
+                onPress={() => {
+                  console.log('CREATE button pressed');
+                  router.push('/add-account');
+                }}
+                style={{ 
+                  paddingHorizontal: 8, 
+                  paddingVertical: 4,
+                  zIndex: 10,
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#059669', fontWeight: '600' }}>CREATE</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#9ca3af', marginHorizontal: 8 }}>|</Text>
+              <TouchableOpacity 
+                onPress={() => {
+                  console.log('VIEW ALL button pressed');
+                  router.push('/accounts');
+                }}
+                style={{ 
+                  paddingHorizontal: 8, 
+                  paddingVertical: 4,
+                  zIndex: 10,
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#2563eb', fontWeight: '600' }}>VIEW ALL</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           
           {accounts.length > 0 ? (
-            <View className="mt-4 flex-row space-x-4">
+            <View style={{ 
+              marginTop: 16, 
+              flexDirection: 'row', 
+              gap: 8,
+              zIndex: 1,
+            }}>
               {accounts.slice(0, 2).map(account => {
                 const recentTransactions = getRecentTransactionsByAccount(account.$id);
                 const transactionCount = getTransactionsByAccount(account.$id).length;
@@ -534,37 +640,93 @@ const Home: React.FC = () => {
                 return (
                   <TouchableOpacity 
                     key={account.$id} 
-                    className="flex-1 bg-green-50 p-4 rounded-lg"
-                    onPress={() => {
-                      // TODO: Navigate to account detail with transactions
+                    style={{ 
+                      flex: 1,
+                      backgroundColor: '#f0fdf4',
+                      borderRadius: 12,
+                      padding: 16,
+                      minHeight: 140,
+                      marginHorizontal: 4,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.1,
+                      shadowRadius: 3,
+                      elevation: 3,
+                      // iOS specific touch improvements
+                      zIndex: 1,
+                      position: 'relative',
                     }}
+                    onPress={() => {
+                      console.log('Account card pressed:', account.name);
+                      handleAccountClick(account);
+                    }}
+                    activeOpacity={0.8}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${account.name} account`}
                   >
-                    <View className="flex-row justify-between items-center mb-3">
-                      <Text className="text-lg font-medium flex-1" numberOfLines={1}>
+                    {/* Card Header */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <Text 
+                        style={{ 
+                          fontSize: 18, 
+                          fontWeight: '600', 
+                          flex: 1, 
+                          color: '#111827' 
+                        }} 
+                        numberOfLines={1}
+                      >
                         {account.name}
                       </Text>
-                      <Ionicons name={getAccountIcon(account.name)} size={20} color="#000" />
+                      <Ionicons name={getAccountIcon(account.name)} size={20} color="#059669" />
                     </View>
                     
-                    <Text className={`text-xl font-bold mb-2 ${isNegativeBalance ? 'text-red-500' : 'text-green-600'}`}>
+                    {/* Balance */}
+                    <Text style={{
+                      fontSize: 20,
+                      fontWeight: 'bold',
+                      marginBottom: 8,
+                      color: isNegativeBalance ? '#ef4444' : '#059669'
+                    }}>
                       {formatVND(account.balance)}
                     </Text>
                     
                     {/* Transaction count */}
-                    <Text className="text-sm text-gray-500 mb-2">
+                    <Text style={{
+                      fontSize: 14,
+                      color: '#6b7280',
+                      marginBottom: 8,
+                    }}>
                       {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
                     </Text>
                     
                     {/* Recent transactions */}
                     {recentTransactions.length > 0 && (
-                      <View className="space-y-1">
-                        <Text className="text-xs font-medium text-gray-600 mb-1">Recent:</Text>
+                      <View style={{ gap: 4 }}>
+                        <Text style={{
+                          fontSize: 12,
+                          fontWeight: '500',
+                          color: '#4b5563',
+                          marginBottom: 4,
+                        }}>Recent:</Text>
                         {recentTransactions.slice(0, 2).map((transaction, index) => (
-                          <View key={index} className="flex-row justify-between items-center">
-                            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
+                          <View key={index} style={{ 
+                            flexDirection: 'row', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center' 
+                          }}>
+                            <Text style={{
+                              fontSize: 12,
+                              color: '#4b5563',
+                              flex: 1,
+                            }} numberOfLines={1}>
                               {transaction.name}
                             </Text>
-                            <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                            <Text style={{
+                              fontSize: 12,
+                              fontWeight: '500',
+                              color: transaction.is_income ? '#10b981' : '#ef4444',
+                            }}>
                               {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
                             </Text>
                           </View>
@@ -573,7 +735,11 @@ const Home: React.FC = () => {
                     )}
                     
                     {recentTransactions.length === 0 && (
-                      <Text className="text-xs text-gray-400 italic">No transactions yet</Text>
+                      <Text style={{
+                        fontSize: 12,
+                        color: '#9ca3af',
+                        fontStyle: 'italic',
+                      }}>No transactions yet</Text>
                     )}
                   </TouchableOpacity>
                 );
@@ -585,154 +751,89 @@ const Home: React.FC = () => {
             </View>
           )}
           
-          {/* Show "View All" hint if there are more than 2 money sources */}
-          {accounts.length > 2 && (
-            <TouchableOpacity 
-              onPress={() => router.push('/accounts')}
-              className="mt-3 py-2"
-            >
-              <Text className="text-center text-blue-600 text-sm">
-                View all money sources
-              </Text>
-            </TouchableOpacity>
-          )}
+
         </View>
 
-        {/* Categories Section */}
-        <View className="mt-6 px-4 h-60">
-          <Text className="text-xl font-bold">Categories</Text>
-          <View className="flex-row mt-4 h-48">
-            <View className="w-1/2 items-center justify-center">
-              {/* <PieChartComponent
-                data={chartData}
-                width={150}
-                height={150}
-                accessor="population"
-                absolute
-                center={[30, 0]}
-                showLegend={false}
-              /> */}
-              <Text className="mt-1 font-bold pr-5">€1980.0</Text>
-            </View>
-            <View className="w-1/2 justify-between py-4">
-              {categoryData.map((item, index) => (
-                <CategoryItem 
-                  key={index} 
-                  icon={item.icon as keyof typeof IconType.glyphMap} 
-                  color={item.color} 
-                  title={item.name} 
-                  amount={item.amount.toString()} 
-                />
-              ))}
-            </View>
-          </View>
-        </View>
+    
 
-        <View>
-          {/* Other components */}
-          <CustomButton 
-            title="Logout" 
-            handlePress={handleLogout} 
-            containerStyles="mt-4"
-            textStyles=""
-            isLoading={false}
-          />
-        </View>
       </ScrollView>
 
-      {/* FAB Menu */}
-      <Modal
-        visible={isMenuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsMenuOpen(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsMenuOpen(false)}
-        >
-          <BlurView intensity={20} style={styles.blurView}>
-            {renderMenuItems()}
-            <TouchableOpacity
-              style={styles.fab}
-              onPress={toggleMenu}
-            >
-              <Ionicons
-                name={isMenuOpen ? 'close' : 'add'}
-                size={28}
-                color="white"
-              />
-            </TouchableOpacity>
-          </BlurView>
-        </TouchableOpacity>
-      </Modal>
+      {/* Floating Action Button */}
+      <FloatingActionButton />
 
-      {/* FAB Button */}
-      {!isMenuOpen && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={toggleMenu}
-        >
-          <Ionicons name="add" size={28} color="white" />
-        </TouchableOpacity>
-      )}
+      {/* Action Modal */}
+      <ActionModal
+        visible={showActionModal}
+        onClose={() => {
+          setShowActionModal(false);
+          setSelectedAccount(null);
+        }}
+        title={selectedAccount?.name || ''}
+        balance={selectedAccount?.balance}
+        actions={[
+          {
+            label: 'Edit',
+            subtitle: 'Update money source details',
+            icon: 'pencil',
+            color: '#2563eb',
+            onPress: () => {
+              if (selectedAccount) {
+                handleEditAccount(selectedAccount);
+              }
+            }
+          },
+          {
+            label: 'Delete',
+            subtitle: 'Remove this money source',
+            icon: 'trash',
+            color: '#dc2626',
+            onPress: () => {
+              if (selectedAccount) {
+                handleDeleteAccount(selectedAccount);
+              }
+            }
+          }
+        ]}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        visible={showDeleteConfirm}
+        title="Delete Money Source"
+        message={`Are you sure you want to delete "${accountToDelete?.name}"? All transactions will be transferred to "Tiền mặt".`}
+        confirmText={isDeleting ? "Deleting..." : "Delete"}
+        cancelText="Cancel"
+        onConfirm={confirmDeleteAccount}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setAccountToDelete(null);
+        }}
+        confirmButtonColor="#dc2626"
+      />
+
+      {/* Success Modal */}
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        title="Deleted Successfully!"
+        message={successMessage}
+      />
+
+      <ErrorModal
+        visible={errorModalVisible}
+        message={errorModalMessage}
+        onClose={() => setErrorModalVisible(false)}
+      />
+
+      {/* Date Picker Modal */}
+      <DatePickerModal
+        visible={showDatePicker}
+        currentDate={currentDate}
+        onClose={() => setShowDatePicker(false)}
+        onDateSelect={handleDateSelect}
+      />
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#3b82f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  blurView: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
-    padding: 24,
-  },
-  menuItem: {
-    position: 'absolute',
-    bottom: 64,
-    right: 24,
-    marginBottom: 2,
-  },
-  menuButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3b82f6',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 24,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4
-  },
-  menuText: {
-    color: 'white',
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
 
 export default Home;

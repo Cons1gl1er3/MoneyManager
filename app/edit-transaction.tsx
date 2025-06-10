@@ -16,9 +16,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomPicker from '../components/CustomPicker';
+import ErrorModal from '../components/ErrorModal';
 import SuccessModal from '../components/SuccessModal';
 import TypeToggleButton from '../components/TypeToggleButton';
-import { getCategories, getUserAccounts, updateTransaction } from '../lib/appwrite';
+import { getCategoriesByType, getUserAccounts, updateTransaction } from '../lib/appwrite';
+
+// Fallback income categories (same as add-transaction)
+const fallbackIncomeCategories = [
+  { $id: 'temp-salary', name: 'Lương', icon: 'wallet-outline', color: '#22C55E' },
+  { $id: 'temp-allowance', name: 'Tiền phụ cấp', icon: 'card-outline', color: '#10B981' },
+  { $id: 'temp-bonus', name: 'Tiền thưởng', icon: 'trophy-outline', color: '#34D399' },
+  { $id: 'temp-freelance', name: 'Freelance', icon: 'laptop-outline', color: '#6EE7B7' },
+  { $id: 'temp-investment', name: 'Đầu tư', icon: 'trending-up-outline', color: '#059669' }
+];
 
 const EditTransaction = () => {
   const router = useRouter();
@@ -38,6 +48,8 @@ const EditTransaction = () => {
   const [transactionId, setTransactionId] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [updatedTransaction, setUpdatedTransaction] = useState(null);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
 
   const styles = StyleSheet.create({
     container: {
@@ -101,13 +113,21 @@ const EditTransaction = () => {
       borderColor: '#d1d5db',
       borderRadius: 12,
       paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingVertical: Platform.OS === 'web' ? 14 : 14,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 28,
+      marginBottom: Platform.OS === 'web' ? 28 : 24,
       backgroundColor: '#fff',
       ...(Platform.OS === 'web' && { cursor: 'pointer' }),
+      ...(Platform.OS === 'ios' && {
+        minHeight: 50,
+      }),
+    },
+    dateText: {
+      fontSize: Platform.OS === 'web' ? 16 : 16,
+      color: '#000000',
+      flex: 1,
     },
     submitButton: {
       flexDirection: 'row',
@@ -130,13 +150,51 @@ const EditTransaction = () => {
     text.replace(/[^0-9]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   const parseNumber = (formatted: string) => formatted.replace(/\./g, '');
 
+  // Load categories based on transaction type (same logic as add-transaction)
+  const loadCategories = async (transactionType: 'income' | 'expense') => {
+    try {
+      console.log(`Loading categories for type: ${transactionType}`);
+      const categoriesData = await getCategoriesByType(transactionType);
+      console.log(`Raw categories data:`, categoriesData);
+      console.log(`Categories count: ${categoriesData.length}`);
+      
+      // If no income categories found, use fallback
+      if (transactionType === 'income' && categoriesData.length === 0) {
+        console.log('No income categories in database, using fallback categories');
+        setCategories(fallbackIncomeCategories);
+        console.log(`Using ${fallbackIncomeCategories.length} fallback income categories`);
+        return;
+      }
+      
+      setCategories(categoriesData);
+      console.log(`Loaded ${categoriesData.length} categories for ${transactionType}`);
+      
+      if (categoriesData.length === 0) {
+        console.warn(`No categories found for type: ${transactionType}. You may need to run admin setup.`);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      
+      // If error and it's income, use fallback
+      if (transactionType === 'income') {
+        console.log('Error loading income categories, using fallback');
+        setCategories(fallbackIncomeCategories);
+        return;
+      }
+      
+      setErrorModalMessage(`Failed to load ${transactionType} categories. Please try again.`);
+      setErrorModalVisible(true);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       if (params.transaction) {
         const t = JSON.parse(params.transaction as string);
         setTransactionId(t.$id);
         setName(t.name);
-        setType(t.is_income ? 'income' : 'expense');
+        const transactionType = t.is_income ? 'income' : 'expense';
+        setType(transactionType);
         setAmount(formatNumber(t.amount.toString()));
         setNote(t.note);
         setSelectedDate(new Date(t.transaction_date));
@@ -144,32 +202,49 @@ const EditTransaction = () => {
         setSelectedCategory(t.category_id.$id);
       }
       try {
-        const [userAccounts, cats] = await Promise.all([
-          getUserAccounts(),
-          getCategories(),
-        ]);
+        const userAccounts = await getUserAccounts();
         setAccounts(userAccounts);
-        setCategories(cats);
+        // Load categories based on current type
+        await loadCategories(type);
       } catch {
         Alert.alert('Error', 'Failed to load data.');
       }
     })();
   }, [params.transaction]);
 
+  // Load categories when transaction type changes
+  useEffect(() => {
+    loadCategories(type);
+    // Reset selected category when type changes
+    setSelectedCategory(null);
+  }, [type]);
+
   const handleSave = async () => {
     if (isLoading) return;
+
+    const showError = (message: string) => {
+      setErrorModalMessage(message);
+      setErrorModalVisible(true);
+    };
+
     const amt = parseNumber(amount);
-    if (
-      !selectedAccount ||
-      !selectedCategory ||
-      !amt ||
-      isNaN(+amt) ||
-      +amt <= 0 ||
-      !name.trim()
-    ) {
-      Alert.alert('Validation error', 'Please fill all required fields.');
-      return;
+    if (!selectedAccount || !selectedCategory) {
+      return showError('Please fill all required fields: Account and Category.');
     }
+    
+    // Check if using temporary category
+    if (selectedCategory?.startsWith('temp-')) {
+      console.log('Warning: Using temporary category');
+      return showError('⚠️ You are using a temporary category.\n\nPlease:\n1. Go to Admin Setup page\n2. Click "Convert 5 Categories to Income" or add via Appwrite Console\n3. Return here to edit transactions with real categories');
+    }
+    
+    if (!amt || isNaN(+amt) || +amt <= 0) {
+      return showError('Please enter a valid amount greater than 0.');
+    }
+    if (!name.trim()) {
+      return showError('Please enter a transaction name.');
+    }
+    
     setIsLoading(true);
     try {
       const payload = {
@@ -191,58 +266,10 @@ const EditTransaction = () => {
       setShowSuccessModal(true);
 
     } catch (e: any) {
-      Alert.alert('Error', `Failed to update: ${e.message ?? 'Unknown'}`);
+      showError(`Failed to update: ${e.message ?? 'Unknown'}`);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const renderDatePicker = () => {
-    if (Platform.OS === 'web') return null;
-    if (Platform.OS === 'ios') {
-      return (
-        <Modal
-          visible={showDatePicker}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowDatePicker(false)}
-        >
-          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
-                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={{ color: '#6b7280' }}>Cancel</Text>
-                </TouchableOpacity>
-                <Text style={{ fontWeight: '600' }}>Select Date</Text>
-                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={{ color: '#007AFF', fontWeight: '600' }}>Done</Text>
-                </TouchableOpacity>
-              </View>
-              <DateTimePicker
-                value={selectedDate}
-                mode="date"
-                display="spinner"
-                onChange={(event, date) => {
-                  if (date) setSelectedDate(date);
-                }}
-              />
-            </View>
-          </View>
-        </Modal>
-      );
-    }
-    
-    return (
-      <DateTimePicker
-        value={selectedDate}
-        mode="date"
-        display="default"
-        onChange={(event, date) => {
-          setShowDatePicker(false);
-          if (date) setSelectedDate(date);
-        }}
-      />
-    );
   };
 
   return (
@@ -289,22 +316,71 @@ const EditTransaction = () => {
 
         <CustomPicker
           label="Select Category *"
-          items={categories.map((cat) => ({ label: cat.name, value: cat.$id }))}
+          items={categories.length === 0 && type === 'income' ? 
+            [{ label: 'No income categories found. Please run admin setup first.', value: null }] :
+            categories.map((category) => ({ label: category.name, value: category.$id }))
+          }
           selectedValue={selectedCategory}
-          onValueChange={(value) => setSelectedCategory(value)}
-          placeholder="Choose a category"
+          onValueChange={(itemValue) => {
+            if (itemValue === null) {
+              // Show helpful message
+              setErrorModalMessage('No categories available. Please:\n\n1. Go to Admin Setup page\n2. Click "Add Income Categories"\n3. Return here to edit transactions');
+              setErrorModalVisible(true);
+              return;
+            }
+            console.log('CATEGORY SELECTED:', itemValue);
+            setSelectedCategory(itemValue);
+          }}
+          placeholder={categories.length === 0 && type === 'income' ? 
+            'Please run admin setup first' : 
+            categories.length === 0 && type === 'expense' ?
+            'Loading categories...' :
+            'Choose a category'
+          }
         />
 
         <Text style={styles.label}>Date *</Text>
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => setShowDatePicker(true)}
-        >
-          <Text style={{ color: '#000', fontSize: 16 }}>
-            {selectedDate.toLocaleDateString()}
-          </Text>
-          <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-        </TouchableOpacity>
+        {Platform.OS === 'web' ? (
+          <input
+            type="date"
+            value={selectedDate.toISOString().split('T')[0]}
+            onChange={(e) => {
+              const newDate = new Date(e.target.value);
+              if (!isNaN(newDate.getTime())) {
+                setSelectedDate(newDate);
+              }
+            }}
+            max={new Date().toISOString().split('T')[0]}
+            style={{
+              border: '1px solid #d1d5db',
+              padding: '14px 16px',
+              borderRadius: 12,
+              fontSize: 16,
+              color: '#000000',
+              backgroundColor: '#ffffff',
+              marginBottom: Platform.OS === 'web' ? 28 : 24,
+              outline: 'none',
+              width: '100%',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box',
+            }}
+          />
+        ) : (
+          <TouchableOpacity
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateText}>
+              {selectedDate.toLocaleDateString('vi-VN', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </Text>
+            <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+          </TouchableOpacity>
+        )}
 
         <Text style={styles.label}>Note</Text>
         <TextInput
@@ -335,7 +411,79 @@ const EditTransaction = () => {
         </TouchableOpacity>
       </ScrollView>
 
-      {showDatePicker && renderDatePicker()}
+      {/* Date Picker Modal for iOS */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showDatePicker}
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+          }}>
+            <View style={{
+              backgroundColor: '#ffffff',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingTop: 20,
+              paddingBottom: 40,
+              paddingHorizontal: 20,
+            }}>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 20,
+              }}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937' }}>
+                  Select Date
+                </Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={{ color: '#2563eb', fontSize: 16, fontWeight: '600' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, date) => {
+                  if (date) {
+                    setSelectedDate(date);
+                  }
+                }}
+                maximumDate={new Date()}
+                textColor="#000000"
+                style={{
+                  backgroundColor: '#ffffff',
+                  height: 200,
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Android Date Picker */}
+      {Platform.OS === 'android' && showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowDatePicker(false);
+            if (date) {
+              setSelectedDate(date);
+            }
+          }}
+          maximumDate={new Date()}
+        />
+      )}
 
       <SuccessModal
         visible={showSuccessModal}
@@ -345,6 +493,11 @@ const EditTransaction = () => {
         }}
         message="Transaction updated successfully!"
         transactionDetails={updatedTransaction}
+      />
+      <ErrorModal
+        visible={errorModalVisible}
+        message={errorModalMessage}
+        onClose={() => setErrorModalVisible(false)}
       />
     </SafeAreaView>
   );

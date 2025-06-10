@@ -62,7 +62,9 @@ export default function TabLayout() {
             shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.1,
             shadowRadius: 4,
-            paddingTop: 4
+            height: 50 + insets.bottom, 
+            paddingTop: 6,
+            paddingBottom: insets.bottom,
           },
           labelStyle: {
             fontSize: 11,
@@ -109,8 +111,7 @@ export default function TabLayout() {
         tabBarAllowFontScaling: false,
         ...(Platform.OS === 'ios' && {
           tabBarItemStyle: {
-            paddingVertical: 4,
-            marginVertical: 0,
+            marginVertical: 3,
           }
         }),
         ...(Platform.OS === 'android' && {
