@@ -74,27 +74,27 @@ export default function TabLayout() {
           },
         };
 
-      case 'android':
-      default:
-        return {
-          style: {
-            ...baseColors,
-            height: 65,
-            paddingTop: 8,
-            paddingBottom: insets.bottom > 0 ? insets.bottom + 4 : 8,
-            borderTopWidth: 1,
-            elevation: 10,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: 0.15,
-            shadowRadius: 6,
-          },
-          labelStyle: {
-            fontSize: 11,
-            marginBottom: 2,
-            fontWeight: '500' as const,
-          },
-        };
+        case 'android':
+          default:
+            return {
+              style: {
+                ...baseColors,
+                height: 65 + insets.bottom, // Add the safe area to the height
+                paddingTop: 8,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 20, // Increase paddingBottom
+                borderTopWidth: 1,
+                elevation: 10,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: -2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 6,
+              },
+              labelStyle: {
+                fontSize: 11,
+                marginBottom: 2,
+                fontWeight: '500' as const,
+              },
+            };
     }
   };
 

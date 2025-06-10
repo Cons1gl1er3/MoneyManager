@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Ionicons as IconType } from '@expo/vector-icons/build/Icons';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
-import { Link, useFocusEffect, useRouter } from 'expo-router';
-import CustomButton from '../../components/CustomButton';
-// import PieChartComponent from '../../components/PieChart';
+import { useIsFocused } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
+import { useFocusEffect, useRouter } from 'expo-router';
 import BarChartComponent from '../../components/BarChart';
+import CustomButton from '../../components/CustomButton';
 import { useGlobalContext } from '../../context/GlobalProvider';
-import { getCurrentUser, getTransactions, getUserAccounts, logout, syncAccountBalance } from '../../lib/appwrite';
+import { getCurrentUser, getTransactions, getUserAccounts, logout } from '../../lib/appwrite';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -49,11 +50,6 @@ interface Account {
   $id: string;
   name: string;
   balance: number;
-}
-
-interface AccountWithTransactions extends Account {
-  transactionCount?: number;
-  recentTransactions?: Transaction[];
 }
 
 interface Category {
@@ -114,8 +110,9 @@ const TransactionItem = ({ icon, color, title, amount, isExpense }: TransactionI
   </View>
 );
 
-const Home = () => {
+const Home: React.FC = () => {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -125,6 +122,9 @@ const Home = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [animation] = useState(new Animated.Value(0));
+  const insets = useSafeAreaInsets();
 
   const changeMonth = (increment: number) => {
     const newDate = new Date(currentDate);
@@ -149,24 +149,29 @@ const Home = () => {
   const fetchUserID = async () => {
     try {
       const user = await getCurrentUser();
-      if (user) {
-        setUserID(user.$id);
+      if (!user) {
+        console.log('No user found, redirecting to sign in...');
+        router.replace('/sign-in');
+        return;
       }
+      setUserID(user.$id);
     } catch (error) {
-      console.error('Error fetching user ID:', error);
+      console.error('Error fetching user:', error);
+      router.replace('/sign-in');
     }
   };
 
   const fetchTransactions = async (forceRefresh = false) => {
     try {
-      if (userID) {
-        console.log('Home: Fetching transactions for user:', userID, 'forceRefresh:', forceRefresh);
-        const allTransactions = await getTransactions(userID, forceRefresh);
-        setTransactions(allTransactions);
-        console.log('Home: Transactions fetched:', allTransactions.length);
+      if (!userID) {
+        console.log('No user ID available, skipping transaction fetch');
+        return;
       }
+      const allTransactions = await getTransactions(userID);
+      setTransactions(allTransactions);
     } catch (error) {
       console.error('Home: Error fetching transactions:', error);
+      setTransactions([]); // Set empty array on error
     }
   };
 
@@ -203,28 +208,16 @@ const Home = () => {
 
   const fetchAccounts = async () => {
     try {
-      if (userID) {
-        console.log('Home: Fetching and syncing accounts...');
-        const userAccounts = await getUserAccounts();
-        
-        // Sync account balances with transactions
-        const syncedAccounts = await Promise.all(
-          userAccounts.map(async (account) => {
-            try {
-              const syncedBalance = await syncAccountBalance(account.$id);
-              return { ...account, balance: syncedBalance };
-            } catch (error) {
-              console.warn(`Failed to sync balance for account ${account.name}:`, error);
-              return account; // Return original account if sync fails
-            }
-          })
-        );
-        
-        setAccounts(syncedAccounts);
-        console.log('Home: Accounts synced:', syncedAccounts.length);
+      if (!userID) {
+        console.log('No user ID available, skipping account fetch');
+        return;
       }
+      console.log('Home: Fetching accounts...');
+      const userAccounts = await getUserAccounts();
+      setAccounts(userAccounts);
     } catch (error) {
       console.error('Home: Error fetching accounts:', error);
+      setAccounts([]); // Set empty array on error
     }
   };
 
@@ -288,11 +281,7 @@ const Home = () => {
     console.log('Manual refresh triggered with force=true');
     
     try {
-      // First fetch latest transactions
       await fetchTransactions(true); // Force refresh
-      console.log('Home: Transactions refreshed, now refreshing accounts...');
-      
-      // Then fetch accounts to sync balances and recent transactions
       await fetchAccounts();
       console.log('Manual refresh completed');
     } catch (error) {
@@ -309,6 +298,7 @@ const Home = () => {
   useEffect(() => {
     if (userID) {
       fetchTransactions();
+      fetchAccounts();
     }
   }, [userID]);
 
@@ -322,23 +312,13 @@ const Home = () => {
     }
   }, [transactions, currentDate]);
 
-  // Fetch accounts when transactions change to update recent transactions
+  // Use useIsFocused to trigger refresh when screen becomes active
   useEffect(() => {
-    if (userID && transactions.length >= 0) {
-      console.log('Home: Transactions changed, fetching accounts to update recent transactions...');
-      fetchAccounts();
+    if (isFocused && userID) {
+      console.log('Screen is focused, triggering refresh...');
+      manualRefresh();
     }
-  }, [userID, transactions.length]);
-
-  // Use useFocusEffect to trigger refresh when screen becomes active
-  useFocusEffect(
-    useCallback(() => {
-      if (userID) {
-        console.log('Screen is focused, triggering refresh...');
-        manualRefresh();
-      }
-    }, [userID])
-  );
+  }, [isFocused, userID]);
 
   // Keep the original useFocusEffect as backup
   useFocusEffect(
@@ -347,7 +327,7 @@ const Home = () => {
       if (userID) {
         const refreshData = async () => {
           try {
-            await fetchTransactions(true); // Force refresh
+            await fetchTransactions(true);
             await fetchAccounts();
             console.log('Home: useFocusEffect refresh completed');
           } catch (error) {
@@ -383,7 +363,6 @@ const Home = () => {
   // Get transactions for a specific account
   const getTransactionsByAccount = (accountId: string): Transaction[] => {
     const accountTransactions = transactions.filter(transaction => transaction.account_id.$id === accountId);
-    console.log(`Home: Account ${accountId} has ${accountTransactions.length} transactions`);
     return accountTransactions;
   };
 
@@ -393,32 +372,77 @@ const Home = () => {
     const recentTransactions = accountTransactions
       .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
       .slice(0, 3);
-    console.log(`Home: Account ${accountId} recent transactions:`, recentTransactions.map(t => t.name));
     return recentTransactions;
   };
 
-  // Memoized account data to avoid unnecessary re-computations
-  const accountsWithTransactionData = useMemo((): AccountWithTransactions[] => {
-    if (!accounts.length || !transactions.length) return accounts;
-    
-    return accounts.map(account => {
-      const accountTransactions = transactions.filter(tx => tx.account_id.$id === account.$id);
-      const recentTransactions = accountTransactions
-        .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
-        .slice(0, 2);
-      
-      console.log(`Home: Memoized account ${account.name} with ${accountTransactions.length} transactions`);
-      
-      return {
-        ...account,
-        transactionCount: accountTransactions.length,
-        recentTransactions: recentTransactions
-      } as AccountWithTransactions;
+  const toggleMenu = () => {
+    const toValue = isMenuOpen ? 0 : 1;
+    Animated.spring(animation, {
+      toValue,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const menuItems = [
+    {
+      title: 'Add Transaction',
+      icon: 'add-circle' as const,
+      route: '/add-transaction' as const,
+    },
+    {
+      title: 'Scan Receipt',
+      icon: 'scan' as const,
+      route: '/scan' as const,
+    },
+    {
+      title: 'Assistant',
+      icon: 'chatbubble-ellipses' as const,
+      route: '/chatbot' as const,
+    },
+  ];
+
+  const renderMenuItems = () => {
+    return menuItems.map((item, index) => {
+      const translateY = animation.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -50 * (index + 1)], // Reduced spacing
+      });
+
+      const opacity = animation.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0, 0, 1],
+      });
+
+      return (
+        <Animated.View
+          key={item.title}
+          style={[
+            styles.menuItem,
+            {
+              transform: [{ translateY }],
+              opacity,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => {
+              setIsMenuOpen(false);
+              router.push(item.route);
+            }}
+          >
+            <Ionicons name={item.icon} size={24} color="white" />
+            <Text style={styles.menuText}>{item.title}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      );
     });
-  }, [accounts, transactions]);
+  };
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={['top']}>
+    <SafeAreaView className={`flex-1 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       <ScrollView className="flex-1">
         {/* Header */}
         <View className="flex-row justify-between items-center px-4 pt-4 my-5">
@@ -509,18 +533,17 @@ const Home = () => {
           
           {accounts.length > 0 ? (
             <View className="mt-4 flex-row space-x-4">
-              {accountsWithTransactionData.slice(0, 2).map(account => {
+              {accounts.slice(0, 2).map(account => {
+                const recentTransactions = getRecentTransactionsByAccount(account.$id);
+                const transactionCount = getTransactionsByAccount(account.$id).length;
                 const isNegativeBalance = account.balance < 0;
-                
-                console.log(`Home: Rendering memoized account ${account.name}, transactions: ${account.transactionCount || 0}, recent: ${account.recentTransactions?.length || 0}`);
                 
                 return (
                   <TouchableOpacity 
-                    key={`${account.$id}-${transactions.length}-${account.transactionCount || 0}`}
+                    key={account.$id} 
                     className="flex-1 bg-green-50 p-4 rounded-lg"
                     onPress={() => {
                       // TODO: Navigate to account detail with transactions
-                      console.log(`Clicked on account: ${account.name}`);
                     }}
                   >
                     <View className="flex-row justify-between items-center mb-3">
@@ -536,30 +559,27 @@ const Home = () => {
                     
                     {/* Transaction count */}
                     <Text className="text-sm text-gray-500 mb-2">
-                      {account.transactionCount || 0} transaction{(account.transactionCount || 0) !== 1 ? 's' : ''}
+                      {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
                     </Text>
                     
                     {/* Recent transactions */}
-                    {account.recentTransactions && account.recentTransactions.length > 0 && (
+                    {recentTransactions.length > 0 && (
                       <View className="space-y-1">
                         <Text className="text-xs font-medium text-gray-600 mb-1">Recent:</Text>
-                        {account.recentTransactions.map((transaction, index) => {
-                          console.log(`Home: Rendering memoized transaction ${index}:`, transaction.name, transaction.amount);
-                          return (
-                            <View key={`${transaction.$id}-${index}`} className="flex-row justify-between items-center">
-                              <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
-                                {transaction.name}
-                              </Text>
-                              <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
-                                {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
-                              </Text>
-                            </View>
-                          );
-                        })}
+                        {recentTransactions.slice(0, 2).map((transaction, index) => (
+                          <View key={index} className="flex-row justify-between items-center">
+                            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>
+                              {transaction.name}
+                            </Text>
+                            <Text className={`text-xs font-medium ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                              {transaction.is_income ? '+' : '-'}{Math.floor(transaction.amount / 1000)}k
+                            </Text>
+                          </View>
+                        ))}
                       </View>
                     )}
                     
-                    {(!account.recentTransactions || account.recentTransactions.length === 0) && (
+                    {recentTransactions.length === 0 && (
                       <Text className="text-xs text-gray-400 italic">No transactions yet</Text>
                     )}
                   </TouchableOpacity>
@@ -615,45 +635,6 @@ const Home = () => {
           </View>
         </View>
 
-        {/* Budget Section */}
-        <View className="mt-6 px-4">
-          <View className="flex-row justify-between items-center">
-            <Text className="text-xl font-bold">Budgets</Text>
-            <TouchableOpacity>
-              <Text className="text-blue-600">VIEW ALL</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View className="mt-4 bg-green-50 p-4 rounded-lg">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-lg font-medium">November Budget</Text>
-              <Text className="text-xl font-bold">€1980.0</Text>
-            </View>
-            <View className="mt-2">
-              <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <View className="h-full w-4/5 bg-orange-400" />
-              </View>
-              <Text className="text-sm text-gray-600 mt-1">€1980.0 of €2500.0</Text>
-              <Text className="text-sm text-gray-600">79.20 %</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Transaction Section */}
-        <View className="mt-6 px-4" style={{ paddingBottom: Platform.OS === 'android' ? 85 : 20 }}>
-          <Text className="text-xl font-bold">Transaction</Text>
-          <View className="mt-4 space-y-4">
-            <TransactionItem
-              icon="medical-outline"
-              color="#6366F1"
-              title="Health"
-              amount="250.0"
-              isExpense
-            />
-            {/* Add more transactions as needed */}
-          </View>
-        </View>
-
         <View>
           {/* Other components */}
           <CustomButton 
@@ -664,25 +645,101 @@ const Home = () => {
             isLoading={false}
           />
         </View>
-        <Link href="/scan" asChild>
-          <TouchableOpacity className="bg-green-600 px-4 py-2 rounded-xl shadow mt-4">
-            <Text className="text-white text-base font-semibold text-center">📸 Scan Receipt</Text>
-          </TouchableOpacity>
-        </Link>
-        <Link href="/chatbot" asChild>
-          <TouchableOpacity className="bg-blue-600 px-4 py-2 rounded-xl shadow mt-4">
-            <Text className="text-white text-base font-semibold text-center">💬 Ask Assistant</Text>
-          </TouchableOpacity>
-        </Link>
       </ScrollView>
-      <TouchableOpacity
-          onPress={() => router.push('/add-transaction')} // Make sure this screen exists
-          className="absolute bottom-6 right-6 bg-blue-600 p-4 rounded-full shadow-xl"
+
+      {/* FAB Menu */}
+      <Modal
+        visible={isMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsMenuOpen(false)}
+        >
+          <BlurView intensity={20} style={styles.blurView}>
+            {renderMenuItems()}
+            <TouchableOpacity
+              style={styles.fab}
+              onPress={toggleMenu}
+            >
+              <Ionicons
+                name={isMenuOpen ? 'close' : 'add'}
+                size={28}
+                color="white"
+              />
+            </TouchableOpacity>
+          </BlurView>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* FAB Button */}
+      {!isMenuOpen && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={toggleMenu}
         >
           <Ionicons name="add" size={28} color="white" />
-      </TouchableOpacity>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  blurView: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    padding: 24,
+  },
+  menuItem: {
+    position: 'absolute',
+    bottom: 64,
+    right: 24,
+    marginBottom: 2,
+  },
+  menuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3b82f6',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4
+  },
+  menuText: {
+    color: 'white',
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+});
 
 export default Home;
