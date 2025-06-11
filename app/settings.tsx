@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import { Alert, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGlobalContext } from '../context/GlobalProvider';
 import { getCurrentUser, logout } from '../lib/appwrite';
@@ -23,9 +24,11 @@ const Settings = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchUserInfo();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchUserInfo();
+    }, [])
+  );
 
   const fetchUserInfo = async () => {
     try {
@@ -118,9 +121,13 @@ const Settings = () => {
           <View className="bg-white rounded-xl p-6 mb-6 shadow-sm">
             <View className="items-center mb-6">
               {/* Avatar */}
-              <View className="w-24 h-24 bg-blue-100 rounded-full items-center justify-center mb-4">
+              <View className="w-24 h-24 bg-blue-100 rounded-full items-center justify-center mb-4 overflow-hidden">
                 {user?.avatar ? (
-                  <Text className="text-2xl">{user.avatar}</Text>
+                  <Image 
+                    source={{ uri: user.avatar }}
+                    className="w-full h-full"
+                    resizeMode="cover"
+                  />
                 ) : (
                   <Ionicons name="person" size={40} color="#3B82F6" />
                 )}
@@ -162,7 +169,10 @@ const Settings = () => {
             </Text>
             
             {/* Account Management */}
-            <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-100">
+            <TouchableOpacity 
+              className="flex-row items-center p-4 border-b border-gray-100"
+              onPress={() => router.push('/account-management')}
+            >
               <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
                 <Ionicons name="person-circle-outline" size={24} color="#3B82F6" />
               </View>
@@ -187,30 +197,6 @@ const Settings = () => {
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
-
-            {/* Notifications */}
-            <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-100">
-              <View className="w-10 h-10 bg-yellow-100 rounded-full items-center justify-center mr-4">
-                <Ionicons name="notifications-outline" size={24} color="#F59E0B" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-gray-800 font-medium">Notifications</Text>
-                <Text className="text-gray-500 text-sm">Configure notification preferences</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-
-            {/* Privacy & Security */}
-            <TouchableOpacity className="flex-row items-center p-4">
-              <View className="w-10 h-10 bg-purple-100 rounded-full items-center justify-center mr-4">
-                <Ionicons name="shield-outline" size={24} color="#8B5CF6" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-gray-800 font-medium">Privacy & Security</Text>
-                <Text className="text-gray-500 text-sm">Manage your privacy settings</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
           </View>
 
           {/* Help & Support */}
@@ -219,16 +205,6 @@ const Settings = () => {
               Help & Support
             </Text>
             
-            <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-100">
-              <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-4">
-                <Ionicons name="help-circle-outline" size={24} color="#3B82F6" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-gray-800 font-medium">Help Center</Text>
-                <Text className="text-gray-500 text-sm">Get help and support</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
 
             <TouchableOpacity className="flex-row items-center p-4">
               <View className="w-10 h-10 bg-green-100 rounded-full items-center justify-center mr-4">
@@ -244,6 +220,9 @@ const Settings = () => {
 
           {/* Logout Button */}
           <View className="bg-white rounded-xl mb-8 shadow-sm overflow-hidden">
+          <Text className="text-lg font-semibold p-4 pb-2 text-gray-800">
+              Logout
+            </Text>
             <TouchableOpacity
               className="flex-row items-center p-4"
               onPress={handleLogout}

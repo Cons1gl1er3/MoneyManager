@@ -274,6 +274,11 @@ const AddTransaction = () => {
     };
 
     const rawAmount = getRawNumber(amount);
+    
+    // Create a date string that preserves the local date without timezone conversion
+    const localDate = new Date(selectedDate);
+    localDate.setHours(12, 0, 0, 0); // Set to noon to avoid any timezone issues
+    
     const payload = {
       name: name.trim(),
       accountID: selectedAccount,
@@ -281,11 +286,13 @@ const AddTransaction = () => {
       amount: parseFloat(rawAmount),
       isIncome: type === 'income',
       note: note.trim(),
-      transactionDate: selectedDate.toISOString()
+      transactionDate: localDate.toISOString()
     };
     
     console.log('--- Attempting to Add Transaction ---');
     console.log('Payload:', JSON.stringify(payload, null, 2));
+    console.log('Selected Date (Local):', selectedDate.toLocaleDateString('vi-VN'));
+    console.log('Date being sent:', localDate.toISOString());
 
     // --- Validation ---
     if (!payload.accountID || !payload.categoryID) {
