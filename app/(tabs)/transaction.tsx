@@ -384,7 +384,19 @@ const Transaction = () => {
                 </View>
                 
                 {/* Transaction List */}
-                <View className="bg-white rounded-lg shadow-sm overflow-hidden mx-4">
+                <View style={{
+                  backgroundColor: 'white',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  marginHorizontal: 16,
+                  borderWidth: 1,
+                  borderColor: '#e5e7eb',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 2,
+                  elevation: 2
+                }}>
                   {group.transactions.map((transaction, txIndex) => (
                     <TouchableOpacity 
                       key={transaction.$id} 
@@ -392,11 +404,28 @@ const Transaction = () => {
                       activeOpacity={0.7}
                     >
                       <View 
-                        className={`flex-row items-center p-4 ${txIndex < group.transactions.length - 1 ? 'border-b border-gray-100' : ''}`}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          padding: 16,
+                          borderBottomWidth: txIndex < group.transactions.length - 1 ? 1 : 0,
+                          borderBottomColor: '#e5e7eb'
+                        }}
                       >
                         <View 
-                          className="w-10 h-10 rounded-full items-center justify-center"
-                          style={{ backgroundColor: transaction.category_id?.color || '#cccccc' }}
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 20,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: transaction.category_id?.color || '#cccccc',
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 1,
+                            elevation: 1
+                          }}
                         >
                           <Ionicons 
                             name={(transaction.category_id?.icon as any) || 'help-circle'}
@@ -404,11 +433,27 @@ const Transaction = () => {
                             color="white" 
                           />
                         </View>
-                        <View className="flex-1 ml-4">
-                          <Text className="font-semibold text-gray-800" numberOfLines={1}>{transaction.name}</Text>
-                          <Text className="text-sm text-gray-500">{transaction.category_id?.name || 'Uncategorized'}</Text>
+                        <View style={{ flex: 1, marginLeft: 16 }}>
+                          <Text 
+                            style={{ 
+                              fontWeight: '600', 
+                              color: '#1f2937', 
+                              fontSize: 16,
+                              marginBottom: 2
+                            }} 
+                            numberOfLines={1}
+                          >
+                            {transaction.name}
+                          </Text>
+                          <Text style={{ fontSize: 14, color: '#6b7280' }}>
+                            {transaction.category_id?.name || 'Uncategorized'}
+                          </Text>
                         </View>
-                        <Text className={`font-bold ${transaction.is_income ? 'text-green-500' : 'text-red-500'}`}>
+                        <Text style={{ 
+                          fontWeight: 'bold',
+                          fontSize: 16,
+                          color: transaction.is_income ? '#22c55e' : '#ef4444'
+                        }}>
                           {transaction.is_income ? '+' : '-'}{formatVND(transaction.amount)}
                         </Text>
                       </View>

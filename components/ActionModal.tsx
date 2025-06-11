@@ -170,7 +170,10 @@ const ActionModal: React.FC<ActionModalProps> = ({
                     activeOpacity={Platform.OS === 'web' ? 0.8 : 0.7}
                     onPress={() => {
                       console.log('Action pressed:', action.label);
-                      action.onPress();
+                      // Add a short timeout to ensure the UI updates properly on iOS
+                      setTimeout(() => {
+                        action.onPress();
+                      }, 50);
                     }}
                     style={{
                       flexDirection: 'row',

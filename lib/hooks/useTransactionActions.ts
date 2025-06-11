@@ -80,10 +80,19 @@ export const useTransactionActions = ({
   }, []);
 
   const handleDeleteTransaction = useCallback(() => {
+    // First close the action modal to prevent UI issues on iOS
     setState(prev => ({
       ...prev,
-      showDeleteConfirm: true,
+      actionModalVisible: false,
     }));
+    
+    // Then show the delete confirmation after a small delay
+    setTimeout(() => {
+      setState(prev => ({
+        ...prev,
+        showDeleteConfirm: true,
+      }));
+    }, 100);
   }, []);
 
   const handleEditTransaction = useCallback(() => {

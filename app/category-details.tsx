@@ -135,6 +135,7 @@ const CategoryDetails = () => {
     showSuccessModal,
     deleting,
     handleTransactionPress,
+    handleDeleteTransaction,
     closeActionModal,
     closeDeleteConfirm,
     closeSuccessModal,

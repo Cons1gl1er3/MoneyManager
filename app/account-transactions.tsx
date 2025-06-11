@@ -52,6 +52,7 @@ const AccountTransactions = () => {
     showSuccessModal,
     deleting,
     handleTransactionPress,
+    handleDeleteTransaction,
     closeActionModal,
     closeDeleteConfirm,
     closeSuccessModal,

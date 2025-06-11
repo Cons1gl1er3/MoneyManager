@@ -138,7 +138,12 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
-              onPress={onConfirm}
+              onPress={() => {
+                // Add a short timeout to ensure the UI updates properly on iOS
+                setTimeout(() => {
+                  onConfirm();
+                }, 50);
+              }}
               style={[styles.button, { backgroundColor: confirmButtonColor }]}
               activeOpacity={Platform.OS === 'ios' ? 0.6 : 0.7}
             >
