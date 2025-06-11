@@ -65,6 +65,7 @@ const Transaction = () => {
   const [showActionModal, setShowActionModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
@@ -303,8 +304,7 @@ const Transaction = () => {
     const transactionToDelete = { ...selectedTransaction }; // Make a copy
     addDebugLog(`DELETE_CONFIRMED: Deleting transaction "${transactionToDelete.name}" (${transactionToDelete.$id}).`);
 
-    // Hide confirmation modal
-    setShowDeleteConfirm(false);
+    setIsDeleting(true);
 
     try {
       await deleteTransaction(transactionToDelete.$id);
@@ -324,6 +324,8 @@ const Transaction = () => {
       setErrorModalVisible(true);
       
     } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
       setSelectedTransaction(null); // Clean up state
     }
   };
@@ -502,7 +504,7 @@ const Transaction = () => {
         visible={showDeleteConfirm}
         title="Delete Transaction"
         message={`Are you sure you want to delete "${selectedTransaction?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
+        confirmText={isDeleting ? "Deleting..." : "Delete"}
         onConfirm={confirmDeleteTransaction}
         onCancel={handleCancelDelete}
       />

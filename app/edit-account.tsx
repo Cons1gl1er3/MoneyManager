@@ -1,8 +1,19 @@
+// app/(accounts)/edit-account.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, useColorScheme, View } from 'react-native';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { EventRegister } from 'react-native-event-listeners';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ConfirmModal from '../components/ConfirmModal';
@@ -11,318 +22,330 @@ import SuccessModal from '../components/SuccessModal';
 import { updateAccount } from '../lib/appwrite';
 import { TRANSACTION_UPDATED_EVENT } from '../lib/hooks/useTransactionActions';
 
-const EditAccount = () => {
+const InputField = ({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) => (
+  <View style={styles.inputContainer}>
+    <Text style={styles.inputLabel}>{label}</Text>
+    {children}
+    {error ? <Text style={styles.errorText}>{error}</Text> : null}
+  </View>
+);
+
+export default function EditAccount() {
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams();
-  const [name, setName] = useState('');
-  const [initialBalance, setInitialBalance] = useState('');
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
+  const [form, setForm] = useState({ name: '', initialBalance: '' });
+  const [originalForm, setOriginalForm] = useState({ name: '', initialBalance: '' });
+  const [accountData, setAccountData] = useState<any>(null);
+
+  const [errors, setErrors] = useState<{ name?: string; initialBalance?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [savedAccount, setSavedAccount] = useState(null);
-  const [errorModalVisible, setErrorModalVisible] = useState(false);
-  const [errorModalMessage, setErrorModalMessage] = useState('');
-  const theme = useColorScheme();
-  const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [apiError, setApiError] = useState('');
 
-  // Parse account data from params
-  const [accountData, setAccountData] = useState(null);
-  const [originalInitialBalance, setOriginalInitialBalance] = useState('');
-  const [showInitialBalanceWarning, setShowInitialBalanceWarning] = useState(false);
-  const [showBalanceConfirm, setShowBalanceConfirm] = useState(false);
-
-  /**
-   * Edit Account Logic:
-   * - Only allow editing account name and initial balance
-   * - Current balance is automatically calculated as: initial_balance + income_transactions - expense_transactions
-   * - When initial_balance changes, current balance is recalculated in the backend
-   */
+  const balanceInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (params.account) {
       try {
         const account = JSON.parse(params.account as string);
-        console.log('Parsed account data:', account);
-        
         setAccountData(account);
-        setName(account.name);
-        
-        // Chỉ lấy initial_balance, nếu không có thì để trống
-        let accountInitialBalance = '';
-        let showInitialBalanceWarning = false;
-        if (account.initial_balance !== undefined && account.initial_balance !== null) {
-          accountInitialBalance = formatNumber(account.initial_balance.toString());
-        } else {
-          accountInitialBalance = '';
-          showInitialBalanceWarning = true;
-        }
-        setInitialBalance(accountInitialBalance);
-        setOriginalInitialBalance(accountInitialBalance);
-        setShowInitialBalanceWarning(showInitialBalanceWarning);
-        
-        console.log('Account loaded successfully:', {
-          name: account.name,
-          balance: account.balance,
-          initial_balance: account.initial_balance
-        });
-      } catch (error) {
-        console.error('Error parsing account data:', error);
-        console.error('Account param:', params.account);
-        setErrorModalMessage('Error loading account data. Please try again.');
-        setErrorModalVisible(true);
+
+        const initialBalanceStr = account.initial_balance?.toString() ?? '0';
+        const formattedBalance = formatNumber(initialBalanceStr);
+
+        setForm({ name: account.name, initialBalance: formattedBalance });
+        setOriginalForm({ name: account.name, initialBalance: formattedBalance });
+      } catch {
+        setApiError('Failed to load account data. Please go back and try again.');
       }
     } else {
-      console.error('No account parameter provided');
-      setErrorModalMessage('No account data provided. Please go back and try again.');
-      setErrorModalVisible(true);
+      setApiError('No account data provided. Please go back and try again.');
     }
   }, [params.account]);
 
-  // Format number with thousand separators
-  const formatNumber = (text: string): string => {
-    // Remove all non-numeric characters
-    const cleanedText = text.replace(/[^0-9-]/g, '');
-    
-    // Handle negative numbers
-    const isNegative = cleanedText.startsWith('-');
-    const positiveNumber = cleanedText.replace('-', '');
-    
-    // Add thousand separators
-    if (positiveNumber) {
-      const formatted = positiveNumber.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-      return isNegative ? `-${formatted}` : formatted;
+  const formatNumber = (text: string) =>
+    text.replace(/[^0-9-]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  const getRawNumber = (formattedText: string) => formattedText.replace(/\./g, '');
+
+  const handleInputChange = (field: 'name' | 'initialBalance', value: string) => {
+    const processedValue = field === 'initialBalance' ? formatNumber(value) : value;
+    setForm((prev) => ({ ...prev, [field]: processedValue }));
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const validateField = (field: 'name' | 'initialBalance') => {
+    let error = '';
+    if (field === 'name') {
+      if (!form.name.trim()) error = 'Account name is required.';
+      else if (form.name.trim().length > 50) error = 'Name cannot exceed 50 characters.';
+    } else {
+      const rawBalance = getRawNumber(form.initialBalance);
+      if (rawBalance === '' || rawBalance === '-') error = 'Initial balance is required.';
+      else if (isNaN(parseFloat(rawBalance))) error = 'Please enter a valid number.';
     }
-    return cleanedText;
+    setErrors((prev) => ({ ...prev, [field]: error || undefined }));
   };
 
-  // Get raw number from formatted string
-  const getRawNumber = (formattedText: string): string => {
-    return formattedText.replace(/\./g, '');
+  const validateForm = () => {
+    const nameError = !form.name.trim() ? 'Account name is required.' : '';
+    const rawBalance = getRawNumber(form.initialBalance);
+    const balanceError =
+      rawBalance === '' || isNaN(parseFloat(rawBalance))
+        ? 'Initial balance is required and must be a number.'
+        : '';
+
+    const newErrors = { name: nameError, initialBalance: balanceError };
+    setErrors(newErrors);
+    return !nameError && !balanceError;
   };
 
-  const handleSave = async () => {
+  const performUpdate = async () => {
     if (!accountData) {
-      setErrorModalMessage('Account data not found');
-      setErrorModalVisible(true);
+      setApiError('Account data is missing.');
       return;
     }
 
-    if (!name.trim()) {
-      setErrorModalMessage('Please enter account name');
-      setErrorModalVisible(true);
-      return;
-    }
-
-    const rawInitialBalance = getRawNumber(initialBalance);
-    
-    if (!rawInitialBalance || isNaN(+rawInitialBalance)) {
-      setErrorModalMessage('Please enter a valid initial balance');
-      setErrorModalVisible(true);
-      return;
-    }
-
-    // Check if any balance has changed
-    const originalRawInitialBalance = getRawNumber(originalInitialBalance);
-    const hasInitialBalanceChanged = rawInitialBalance !== originalRawInitialBalance;
-    
-    if (hasInitialBalanceChanged && !showBalanceConfirm) {
-      setShowBalanceConfirm(true);
-      return;
-    }
-
-    await performUpdate(rawInitialBalance);
-  };
-
-  const performUpdate = async (rawInitialBalance: string) => {
     setIsLoading(true);
+    setApiError('');
+
     try {
-      const updatedAccount = await updateAccount(accountData.$id, {
-        name: name.trim(),
-        initial_balance: +rawInitialBalance,
+      const balanceValue = parseFloat(getRawNumber(form.initialBalance));
+      await updateAccount(accountData.$id, {
+        name: form.name.trim(),
+        initial_balance: balanceValue,
       });
 
-      // Emit event to notify that an account has been updated
       EventRegister.emit(TRANSACTION_UPDATED_EVENT, {
         action: 'account_update',
-        id: accountData.$id
-      });
-
-      setSavedAccount({
-        name: name.trim(),
-        balance: +rawInitialBalance,
-        balanceType: 'Initial Balance',
+        id: accountData.$id,
       });
       setShowSuccessModal(true);
-    } catch (error) {
-      console.error('Error updating account:', error);
-      setErrorModalMessage('Failed to update account. Please try again.');
-      setErrorModalVisible(true);
+    } catch (error: any) {
+      setApiError(`Failed to update account: ${(error as Error).message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleSubmit = async () => {
+    Keyboard.dismiss();
+    if (!validateForm() || isLoading) return;
+
+    const hasInitialBalanceChanged = form.initialBalance !== originalForm.initialBalance;
+    if (hasInitialBalanceChanged) {
+      setShowConfirmModal(true);
+    } else {
+      await performUpdate();
+    }
+  };
+
   if (!accountData) {
     return (
-      <>
-        <Stack.Screen options={{ headerShown: false }} />
-        <SafeAreaView className="flex-1 bg-gray-50">
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-gray-500 text-lg">Loading...</Text>
-          </View>
-        </SafeAreaView>
-      </>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+        <ErrorModal visible={!!apiError} message={apiError} onClose={() => router.back()} />
+      </SafeAreaView>
     );
   }
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView className="flex-1 bg-white">
-        <StatusBar style="dark" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View className="flex-1">
-              {/* Header */}
-              <View className="flex-row items-center px-4 pt-4 mb-6">
-                <TouchableOpacity
-                  onPress={() => router.back()}
-                  className="mr-4 p-2 bg-gray-100 rounded-full"
-                >
-                  <Ionicons name="arrow-back" size={24} color="#000" />
-                </TouchableOpacity>
-                <Text className="text-2xl font-bold flex-1">Edit Money Source</Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar backgroundColor="#F9FAFB" style="dark" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <View style={styles.pageContainer}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Edit Money Source</Text>
+          </View>
+
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <InputField label="Account Name" error={errors.name}>
+              <TextInput
+                value={form.name}
+                onChangeText={(text) => handleInputChange('name', text)}
+                onBlur={() => validateField('name')}
+                placeholder="e.g., Savings Account"
+                style={[styles.textInput, !!errors.name && styles.inputError]}
+                returnKeyType="next"
+                onSubmitEditing={() => balanceInputRef.current?.focus()}
+                blurOnSubmit={false}
+                autoCapitalize="words"
+              />
+            </InputField>
+
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={24} color="#065F46" />
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>About Initial Balance</Text>
+                <Text style={styles.infoText}>
+                  This is the starting amount. Your current balance is automatically calculated based
+                  on this plus all recorded income and expenses.
+                </Text>
               </View>
-
-              <ScrollView 
-                className="flex-1 px-4"
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 40 }}
-              >
-                {/* Account Name Input */}
-                <View className="mb-6">
-                  <Text className="text-base font-medium text-gray-700 mb-2">
-                    Account Name *
-                  </Text>
-                  <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Enter account name"
-                    placeholderTextColor="#9ca3af"
-                    className="w-full p-4 border border-gray-300 rounded-xl text-base"
-                    style={{ backgroundColor: '#ffffff', paddingVertical: Platform.OS === 'ios' ? 16 : 12 }}
-                  />
-                </View>
-
-                {/* Balance Info Card */}
-                <View className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                  <Text className="text-base font-medium text-blue-900 mb-2">
-                    💡 About Initial Balance
-                  </Text>
-                  <Text className="text-sm text-blue-700 mb-2">
-                    This is the amount of money you had when you first created this account.
-                  </Text>
-                  <Text className="text-sm text-blue-700">
-                    Your current balance will be calculated automatically: Initial Balance + Income - Expenses
-                  </Text>
-                </View>
-
-                {/* Initial Balance Input */}
-                <View className="mb-6">
-                  <Text className="text-base font-medium text-gray-700 mb-2">
-                    Initial Balance *
-                  </Text>
-                  <View className="flex-row items-center">
-                    <TextInput
-                      value={initialBalance}
-                      onChangeText={(text) => setInitialBalance(formatNumber(text))}
-                      placeholder="0"
-                      keyboardType="numeric"
-                      placeholderTextColor="#9ca3af"
-                      className="flex-1 p-4 border border-gray-300 rounded-xl text-base"
-                      style={{ backgroundColor: '#ffffff', paddingVertical: Platform.OS === 'ios' ? 16 : 12 }}
-                    />
-                  </View>
-                  <Text className="text-sm text-gray-500 mt-1">
-                    The amount of money you had when you first created this account.
-                  </Text>
-                  {showInitialBalanceWarning && (
-                    <Text className="text-xs text-red-500 mt-1">
-                      This account does not have an initial balance set. Please enter the original amount you had when creating this account.
-                    </Text>
-                  )}
-                </View>
-
-                {/* Save Button */}
-                <TouchableOpacity
-                  onPress={handleSave}
-                  disabled={isLoading}
-                  className={`w-full p-4 rounded-xl flex-row items-center justify-center ${
-                    isLoading ? 'bg-gray-400' : 'bg-blue-600'
-                  }`}
-                  style={{ marginTop: 20 }}
-                >
-                  {isLoading ? (
-                    <>
-                      <Ionicons name="hourglass-outline" size={20} color="white" />
-                      <Text className="text-white font-semibold text-base ml-2">
-                        Updating...
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="save-outline" size={20} color="white" />
-                      <Text className="text-white font-semibold text-base ml-2">
-                        Update Account
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </ScrollView>
             </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-        
-        {/* Modals */}
-        <SuccessModal
-          visible={showSuccessModal}
-          onClose={() => {
-            setShowSuccessModal(false);
-            router.back();
-          }}
-          message="Account has been updated successfully!"
-          accountDetails={savedAccount}
-        />
 
-        {/* Balance Change Confirmation Modal */}
-        <ConfirmModal
-          visible={showBalanceConfirm}
-          title="Confirm Balance Change"
-          message={`Are you sure you want to make these changes?\n\nInitial Balance: ${formatNumber(getRawNumber(originalInitialBalance))} → ${initialBalance}\n\nThis will directly modify your account balance. Consider creating income/expense transactions instead.`}
-          confirmText="Yes, Update Balance"
-          cancelText="Cancel"
-          onConfirm={async () => {
-            setShowBalanceConfirm(false);
-            const rawInitialBalance = getRawNumber(initialBalance);
-            await performUpdate(rawInitialBalance);
-          }}
-          onCancel={() => {
-            setShowBalanceConfirm(false);
-          }}
-          confirmButtonColor="#D97706"
-        />
+            <InputField label="Initial Balance" error={errors.initialBalance}>
+              <TextInput
+                ref={balanceInputRef}
+                keyboardType="numeric"
+                inputMode="numeric"
+                value={form.initialBalance}
+                onChangeText={(text) => handleInputChange('initialBalance', text)}
+                onBlur={() => validateField('initialBalance')}
+                placeholder="0"
+                style={[styles.textInput, !!errors.initialBalance && styles.inputError]}
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit}
+              />
+            </InputField>
+          </ScrollView>
 
-        {/* Error Modal */}
-        <ErrorModal
-          visible={errorModalVisible}
-          message={errorModalMessage}
-          onClose={() => setErrorModalVisible(false)}
-        />
-      </SafeAreaView>
-    </>
+          <View style={styles.footer}>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={isLoading}
+              style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+            >
+              <Ionicons name="save" size={20} color="white" />
+              <Text style={styles.buttonText}>{isLoading ? 'Updating...' : 'Update Account'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          router.back();
+        }}
+        message="Account updated successfully!"
+        accountDetails={{
+          name: form.name.trim(),
+          balance: parseFloat(getRawNumber(form.initialBalance)) || 0,
+          balanceType: 'Initial Balance',
+        }}
+      />
+
+      <ConfirmModal
+        visible={showConfirmModal}
+        title="Confirm Balance Change"
+        message={`Changing the initial balance from ${originalForm.initialBalance} to ${form.initialBalance} will directly affect your current balance. Are you sure?`}
+        confirmText="Yes, Update"
+        onConfirm={async () => {
+          setShowConfirmModal(false);
+          await performUpdate();
+        }}
+        onCancel={() => setShowConfirmModal(false)}
+      />
+
+      <ErrorModal visible={!!apiError} message={apiError} onClose={() => setApiError('')} />
+    </SafeAreaView>
   );
-};
+}
 
-export default EditAccount; 
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  flex: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  loadingText: { fontSize: 18, color: '#6B7280' },
+  pageContainer: {
+    flex: 1,
+    ...Platform.select({
+      web: { maxWidth: 768, width: '100%', alignSelf: 'center' },
+    }),
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 0 : 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  backButton: { padding: 8, borderRadius: 9999, marginRight: 16 },
+  headerTitle: { fontSize: 20, fontWeight: '600', color: '#111827' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 24 },
+  inputContainer: { marginBottom: 24 },
+  inputLabel: { color: '#374151', marginBottom: 8, fontSize: 16, fontWeight: '500' },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      ios: { paddingVertical: 16 },
+      android: { paddingVertical: 12 },
+      web: { paddingVertical: 16, outlineStyle: 'none' } as any,
+    }),
+  },
+  inputError: { borderColor: '#EF4444' },
+  errorText: { color: '#EF4444', fontSize: 14, marginTop: 6 },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  infoTextContainer: { flex: 1, marginLeft: 12 },
+  infoTitle: { fontSize: 16, fontWeight: '600', color: '#064E3B', marginBottom: 4 },
+  infoText: { fontSize: 14, color: '#065F46', lineHeight: 20 },
+  footer: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#3B82F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  submitButtonDisabled: { backgroundColor: '#9CA3AF', elevation: 0, shadowOpacity: 0 },
+  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', marginLeft: 8 },
+});

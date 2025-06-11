@@ -1,260 +1,263 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ErrorModal from '../components/ErrorModal';
 import SuccessModal from '../components/SuccessModal';
 import { createAccount } from '../lib/appwrite';
 
-const AddAccount = () => {
+const InputField = ({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) => (
+  <View style={styles.inputContainer}>
+    <Text style={styles.inputLabel}>{label}</Text>
+    {children}
+    {error ? <Text style={styles.errorText}>{error}</Text> : null}
+  </View>
+);
+
+export default function AddAccount() {
   const router = useRouter();
-  const [name, setName] = useState('');
-  const [balance, setBalance] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // Loading state
-  const [showSuccessModal, setShowSuccessModal] = useState(false); // Success modal state
-  const [savedAccount, setSavedAccount] = useState(null); // Store saved account data
-  const [errorModalVisible, setErrorModalVisible] = useState(false);
-  const [errorModalMessage, setErrorModalMessage] = useState('');
+  const navigation = useNavigation();
 
-  // Format number with thousand separators
-  const formatNumber = (text: string): string => {
-    // Remove all non-numeric characters
-    const cleanedText = text.replace(/[^0-9]/g, '');
-    
-    // Add thousand separators
-    if (cleanedText) {
-      return cleanedText.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  // hide header once on mount
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
+  const [form, setForm] = useState({ name: '', balance: '' });
+  const [errors, setErrors] = useState<{ name?: string; balance?: string }>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [apiError, setApiError] = useState('');
+
+  const balanceInputRef = useRef<TextInput>(null);
+
+  const formatNumber = (text: string) =>
+    text.replace(/[^0-9]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  const getRawNumber = (formattedText: string) => formattedText.replace(/\./g, '');
+
+  const handleInputChange = (field: 'name' | 'balance', value: string) => {
+    const processedValue = field === 'balance' ? formatNumber(value) : value;
+    setForm((prev) => ({ ...prev, [field]: processedValue }));
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const validateField = (field: 'name' | 'balance') => {
+    let error = '';
+    if (field === 'name') {
+      if (!form.name.trim()) error = 'Money source name is required.';
+      else if (form.name.trim().length > 50) error = 'Name cannot exceed 50 characters.';
+    } else {
+      const rawBalance = getRawNumber(form.balance);
+      if (!rawBalance) error = 'Initial balance is required.';
+      else {
+        const balanceValue = parseFloat(rawBalance);
+        if (isNaN(balanceValue)) error = 'Please enter a valid number.';
+        else if (balanceValue < 0) error = 'Balance cannot be negative.';
+      }
     }
-    return cleanedText;
+    setErrors((prev) => ({ ...prev, [field]: error || undefined }));
   };
 
-  // Get raw number from formatted string
-  const getRawNumber = (formattedText: string): string => {
-    return formattedText.replace(/\./g, '');
+  const validateForm = () => {
+    const newErrors: { name?: string; balance?: string } = {};
+
+    if (!form.name.trim()) newErrors.name = 'Money source name is required.';
+    else if (form.name.trim().length > 50) newErrors.name = 'Name cannot exceed 50 characters.';
+
+    const rawBalance = getRawNumber(form.balance);
+    if (!rawBalance) newErrors.balance = 'Initial balance is required.';
+    else {
+      const balanceValue = parseFloat(rawBalance);
+      if (isNaN(balanceValue)) newErrors.balance = 'Please enter a valid number.';
+      else if (balanceValue < 0) newErrors.balance = 'Balance cannot be negative.';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  // Handle account creation
   const handleSubmit = async () => {
-    if (isLoading) return; // Prevent multiple submissions
-    
+    Keyboard.dismiss();
+    if (!validateForm() || isLoading) return;
+
     setIsLoading(true);
-    
+    setApiError('');
+
     try {
-      if (!name.trim()) {
-        setErrorModalMessage('Please enter a money source name.');
-        setErrorModalVisible(true);
-        setIsLoading(false);
-        return;
-      }
-      
-      // Get raw balance value for validation
-      const rawBalance = getRawNumber(balance);
-      const balanceValue = parseFloat(rawBalance) || 0;
-      
-      if (isNaN(balanceValue) || balanceValue <= 0) {
-        setErrorModalMessage('Please enter a valid balance (must be 0 or greater).');
-        setErrorModalVisible(true);
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('AddAccount: Creating account...', {
-        name: name.trim(),
-        balance: balanceValue
-      });
-
-      // Create account via Appwrite
-      await createAccount(name.trim(), balanceValue);
-
-      console.log('AddAccount: Account created successfully');
-
-      // Store account data and show success modal
-      setSavedAccount({
-        name: name.trim(),
-        balance: balanceValue
-      });
+      const balanceValue = parseFloat(getRawNumber(form.balance));
+      await createAccount(form.name.trim(), balanceValue);
       setShowSuccessModal(true);
-
-    } catch (error) {
-      console.error('Error creating account:', error);
-      setErrorModalMessage(`Failed to create money source: ${error.message || 'Unknown error'}`);
-      setErrorModalVisible(true);
+    } catch (error: any) {
+      const errorMessage = (error as Error).message || 'An unknown error occurred.';
+      setApiError(`Failed to create money source: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Create a style for web inputs with additional properties
-  const webInputStyle = Platform.OS === 'web' ? {
-    height: 50,
-    outlineWidth: 0,
-    paddingTop: 12,
-    paddingBottom: 12,
-  } : {};
-
-  // Main content as a separate component for easy conditional rendering
-  const InnerContent = () => (
-    <View style={styles.innerContainer}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          Add Money Source
-        </Text>
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: 20 }}
-      >
-        {/* Account Name Input */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Money Source Name</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="E.g. Savings, Checking, etc."
-            placeholderTextColor="#9CA3AF"
-            style={[styles.textInput, webInputStyle]}
-          />
-        </View>
-
-        {/* Initial Balance Input */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Initial Balance</Text>
-          <TextInput
-            keyboardType="numeric"
-            value={balance}
-            onChangeText={(text) => {
-              const formatted = formatNumber(text);
-              setBalance(formatted);
-            }}
-            placeholder="E.g. 50.000, 1.000.000"
-            placeholderTextColor="#9CA3AF"
-            style={[styles.textInput, webInputStyle]}
-          />
-        </View>
-
-        {/* Submit Button */}
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={isLoading}
-          style={[
-            styles.submitButton,
-            isLoading && styles.submitButtonDisabled
-          ]}
-        >
-          {isLoading ? (
-            <>
-              <Ionicons name="hourglass-outline" size={20} color="white" />
-              <Text style={styles.buttonText}>Creating...</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="save" size={20} color="white" />
-              <Text style={styles.buttonText}>Create Money Source</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
-  );
-
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView style={styles.container}>
-        <StatusBar backgroundColor="#FFFFFF" style="dark" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          {Platform.OS === 'web' ? (
-            <InnerContent />
-          ) : (
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <InnerContent />
-            </TouchableWithoutFeedback>
-          )}
-        </KeyboardAvoidingView>
-        
-        {/* Modals */}
-        <SuccessModal
-          visible={showSuccessModal}
-          onClose={() => {
-            setShowSuccessModal(false);
-            router.back();
-          }}
-          message="Money source has been created successfully!"
-          accountDetails={savedAccount}
-        />
+    <SafeAreaView style={styles.container}>
+      <StatusBar backgroundColor="#F9FAFB" style="dark" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <View style={styles.pageContainer}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Add Money Source</Text>
+          </View>
 
-        <ErrorModal
-          visible={errorModalVisible}
-          message={errorModalMessage}
-          onClose={() => setErrorModalVisible(false)}
-        />
-      </SafeAreaView>
-    </>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <InputField label="Money Source Name" error={errors.name}>
+              <TextInput
+                value={form.name}
+                onChangeText={(text) => handleInputChange('name', text)}
+                onBlur={() => validateField('name')}
+                placeholder="e.g., Savings, Checking"
+                placeholderTextColor="#9CA3AF"
+                style={[styles.textInput, !!errors.name && styles.inputError]}
+                returnKeyType="next"
+                onSubmitEditing={() => balanceInputRef.current?.focus()}
+                blurOnSubmit={false}
+                autoCapitalize="words"
+              />
+            </InputField>
+
+            <InputField label="Initial Balance" error={errors.balance}>
+              <TextInput
+                ref={balanceInputRef}
+                keyboardType="numeric"
+                inputMode="numeric"
+                value={form.balance}
+                onChangeText={(text) => handleInputChange('balance', text)}
+                onBlur={() => validateField('balance')}
+                placeholder="e.g., 50.000"
+                placeholderTextColor="#9CA3AF"
+                style={[styles.textInput, !!errors.balance && styles.inputError]}
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit}
+              />
+            </InputField>
+          </ScrollView>
+
+          {/* Submit Button */}
+          <View style={styles.footer}>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={isLoading}
+              style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+            >
+              {isLoading ? (
+                <Ionicons name="hourglass-outline" size={20} color="white" />
+              ) : (
+                <Ionicons name="save" size={20} color="white" />
+              )}
+              <Text style={styles.buttonText}>
+                {isLoading ? 'Creating...' : 'Create Money Source'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          router.replace('/home');
+        }}
+        message="Money source created successfully!"
+        accountDetails={{
+          name: form.name.trim(),
+          balance: parseFloat(getRawNumber(form.balance)) || 0,
+        }}
+      />
+
+      <ErrorModal
+        visible={!!apiError}
+        message={apiError}
+        onClose={() => setApiError('')}
+      />
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  flex: { flex: 1 },
+  pageContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  innerContainer: {
-    flex: 1,
+    ...Platform.select({
+      web: { maxWidth: 768, width: '100%', alignSelf: 'center' },
+    }),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    marginBottom: 24,
+    paddingTop: Platform.OS === 'ios' ? 0 : 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
-  backButton: {
-    padding: 8,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 9999,
-    marginRight: 16,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  inputContainer: {
-    marginBottom: 24,
-  },
-  inputLabel: {
-    color: '#4b5563',
-    marginBottom: 8,
-    fontSize: 16,
-  },
+  backButton: { padding: 8, borderRadius: 9999, marginRight: 16 },
+  headerTitle: { fontSize: 20, fontWeight: '600', color: '#111827' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 24 },
+  inputContainer: { marginBottom: 24 },
+  inputLabel: { color: '#374151', marginBottom: 8, fontSize: 16, fontWeight: '500' },
   textInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#D1D5DB',
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 16 : 12,
     fontSize: 16,
-    color: '#1f2937',
-    backgroundColor: '#ffffff',
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      ios: { paddingVertical: 16 },
+      android: { paddingVertical: 12 },
+      web: { paddingVertical: 16, outlineStyle: 'none' } as any,
+    }),
+  },
+  inputError: { borderColor: '#EF4444' },
+  errorText: { color: '#EF4444', fontSize: 14, marginTop: 6 },
+  footer: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   submitButton: {
     flexDirection: 'row',
@@ -262,17 +265,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 16,
     borderRadius: 12,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#3B82F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitButtonDisabled: {
-    backgroundColor: '#9ca3af',
+    backgroundColor: '#9CA3AF',
+    elevation: 0,
+    shadowOpacity: 0,
   },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
+  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', marginLeft: 8 },
 });
-
-export default AddAccount;
