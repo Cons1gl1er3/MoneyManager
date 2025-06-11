@@ -3,8 +3,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ConfirmModal from '../components/ConfirmModal';
 import { useGlobalContext } from '../context/GlobalProvider';
 import { getCurrentUser, logout } from '../lib/appwrite';
 
@@ -23,6 +24,9 @@ const Settings = () => {
   const { logoutUser } = useGlobalContext();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [contactModalVisible, setContactModalVisible] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -43,38 +47,21 @@ const Settings = () => {
   };
 
   const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm('Are you sure you want to logout?');
-      if (confirmed) {
-        performLogout();
-      }
-    } else {
-      Alert.alert(
-        'Logout',
-        'Are you sure you want to logout?',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Logout',
-            style: 'destructive',
-            onPress: performLogout,
-          },
-        ]
-      );
-    }
+    setLogoutConfirmVisible(true);
   };
 
   const performLogout = async () => {
+    setLoggingOut(true);
     try {
       await logout();
       logoutUser();
+      setLogoutConfirmVisible(false);
       router.replace('/sign-in');
     } catch (error) {
       console.error('Logout failed:', error);
       Alert.alert('Error', 'Failed to logout. Please try again.');
+    } finally {
+      setLoggingOut(false);
     }
   };
 
@@ -147,13 +134,6 @@ const Settings = () => {
             {/* User Details */}
             <View className="space-y-4">
               <View className="flex-row justify-between items-center py-3 border-b border-gray-100">
-                <Text className="text-gray-600">User ID</Text>
-                <Text className="text-gray-800 font-medium text-xs">
-                  {user?.$id ? `${user.$id.substring(0, 8)}...` : 'N/A'}
-                </Text>
-              </View>
-              
-              <View className="flex-row justify-between items-center py-3 border-b border-gray-100">
                 <Text className="text-gray-600">Member Since</Text>
                 <Text className="text-gray-800 font-medium">
                   {user?.$createdAt ? formatDate(user.$createdAt) : 'N/A'}
@@ -205,8 +185,10 @@ const Settings = () => {
               Help & Support
             </Text>
             
-
-            <TouchableOpacity className="flex-row items-center p-4">
+            <TouchableOpacity 
+              className="flex-row items-center p-4"
+              onPress={() => setContactModalVisible(true)}
+            >
               <View className="w-10 h-10 bg-green-100 rounded-full items-center justify-center mr-4">
                 <Ionicons name="mail-outline" size={24} color="#10B981" />
               </View>
@@ -220,18 +202,21 @@ const Settings = () => {
 
           {/* Logout Button */}
           <View className="bg-white rounded-xl mb-8 shadow-sm overflow-hidden">
-          <Text className="text-lg font-semibold p-4 pb-2 text-gray-800">
+            <Text className="text-lg font-semibold p-4 pb-2 text-gray-800">
               Logout
             </Text>
             <TouchableOpacity
               className="flex-row items-center p-4"
               onPress={handleLogout}
+              disabled={loggingOut}
             >
               <View className="w-10 h-10 bg-red-100 rounded-full items-center justify-center mr-4">
                 <Ionicons name="log-out-outline" size={24} color="#EF4444" />
               </View>
               <View className="flex-1">
-                <Text className="text-red-500 font-medium">Logout</Text>
+                <Text className="text-red-500 font-medium">
+                  {loggingOut ? 'Logging out...' : 'Logout'}
+                </Text>
                 <Text className="text-gray-500 text-sm">Sign out of your account</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#EF4444" />
@@ -239,6 +224,37 @@ const Settings = () => {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        visible={logoutConfirmVisible}
+        onCancel={() => setLogoutConfirmVisible(false)}
+        onConfirm={performLogout}
+        title="Logout Confirmation"
+        message="Are you sure you want to logout? You will be redirected to the sign-in screen."
+        confirmText="Logout"
+        cancelText="Cancel"
+        confirmButtonColor="#dc2626"
+      />
+
+      {/* Contact Modal */}
+      <ConfirmModal
+        visible={contactModalVisible}
+        onCancel={() => setContactModalVisible(false)}
+        onConfirm={() => setContactModalVisible(false)}
+        title="Contact Us"
+        message={`
+Group 2 - SE - 20242
+Welcome to Money Manager! 
+This app helps you track your expenses and manage your money effectively.
+
+For feedback or support, please contact us at:
+vanhtran18.work@gmail.com`
+}
+        confirmText="Close"
+        cancelText=""
+        confirmButtonColor="#10B981"
+      />
     </>
   );
 };

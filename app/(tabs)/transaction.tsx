@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { EventRegister } from 'react-native-event-listeners';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActionModal from '../../components/ActionModal';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -13,6 +14,7 @@ import FloatingActionButton from '../../components/FloatingActionButton';
 import MonthSelector from '../../components/MonthSelector';
 import SuccessModal from '../../components/SuccessModal';
 import { deleteTransaction, getCurrentUser, getTransactions } from '../../lib/appwrite'; // Assuming you have a function to fetch transactions
+import { TRANSACTION_UPDATED_EVENT } from '../../lib/hooks/useTransactionActions';
 
 interface Account {
   $id: string;  // The account ID
@@ -215,6 +217,23 @@ const Transaction = () => {
       }
     }, [userID])
   );
+
+  // Listen for transaction update events
+  useEffect(() => {
+    const listener = EventRegister.addEventListener(
+      TRANSACTION_UPDATED_EVENT, 
+      (data) => {
+        console.log('Transaction: Received update event:', data);
+        if (userID) {
+          manualRefresh();
+        }
+      }
+    ) as string;
+    
+    return () => {
+      EventRegister.removeEventListener(listener);
+    };
+  }, [userID]);
 
   // Handles tapping on a transaction row
   const handleTransactionPress = (transaction: Transaction) => {

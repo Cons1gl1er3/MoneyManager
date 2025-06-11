@@ -180,6 +180,9 @@ const PieChartComponent = ({ income, spending, formatVND }) => {
     const incomePercentage = total > 0 ? (income / total) * 100 : 0;
     const spendingPercentage = total > 0 ? (spending / total) * 100 : 0;
 
+    // Hàm format chỉ lấy số, không có đơn vị
+    const formatNumberOnly = (amount) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(amount || 0);
+
     // Xử lý sự kiện khi nhấn vào biểu đồ
     const handlePress = () => {
         if (selectedSegment === 'income') {
@@ -223,9 +226,10 @@ const PieChartComponent = ({ income, spending, formatVND }) => {
                         }}
                     >
                         <Text className="text-sm font-medium text-gray-500 text-center mb-2">Net Total</Text>
-                        <Text className={`text-xl font-bold text-center ${netTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatVND(netTotal)}
-                        </Text>
+                        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                          <Text className={`text-xl font-bold text-center ${netTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatNumberOnly(netTotal)}</Text>
+                          <Text style={{ fontSize: 18, textAlign: 'center', marginTop: 0, fontWeight: 'bold' }} className={netTotal >= 0 ? 'text-green-600' : 'text-red-600'}>VNĐ</Text>
+                        </View>
                         <Text className="text-xs text-gray-400 text-center mt-1">
                             {netTotal >= 0 ? 'Surplus' : 'Deficit'}
                         </Text>

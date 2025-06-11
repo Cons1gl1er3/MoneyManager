@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import React, { useState } from 'react';
 import {
-    FlatList,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  FlatList,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 interface PickerItem {
@@ -70,53 +70,73 @@ const CustomPicker: React.FC<CustomPickerProps> = ({
       </TouchableOpacity>
 
       <Modal
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
-        statusBarTranslucent={Platform.OS === 'android'}
+        statusBarTranslucent={true}
         presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
-        <View style={styles.modalOverlay}>
-          {Platform.OS === 'ios' || Platform.OS === 'android' ? (
-            <BlurView intensity={30} tint="dark" style={[StyleSheet.absoluteFillObject]} />
-          ) : (
-            <View style={styles.overlay} />
-          )}
-          
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={() => setModalVisible(false)}
-          />
-          
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{label}</Text>
+        <TouchableOpacity 
+          style={{ flex: 1 }} 
+          activeOpacity={1} 
+          onPress={() => setModalVisible(false)}
+        >
+          <BlurView intensity={30} style={{ flex: 1 }}>
+            {/* Dark overlay for better focus */}
+            <View style={{ 
+              flex: 1, 
+              backgroundColor: 'rgba(0,0,0,0.4)', 
+              zIndex: 100,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingHorizontal: 24,
+            }}>
               <TouchableOpacity 
-                onPress={() => setModalVisible(false)}
-                style={Platform.OS === 'ios' && {
-                  padding: 4,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(0,0,0,0.1)',
+                activeOpacity={1} 
+                onPress={(e) => e.stopPropagation()}
+                style={{
+                  width: '100%',
+                  maxWidth: Platform.OS === 'web' ? 450 : 380,
                 }}
               >
-                <Ionicons name="close" size={24} color="#374151" />
+                <View style={{
+                  backgroundColor: 'white',
+                  borderRadius: 16,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 8,
+                  elevation: 8,
+                  overflow: 'hidden',
+                  paddingVertical: 8,
+                }}>
+                  <View style={styles.modalHeader}>
+                    <Text style={[styles.modalTitle, { textAlign: 'center', flex: 1 }]}>{label}</Text>
+                    <TouchableOpacity 
+                      onPress={() => setModalVisible(false)}
+                      style={{ padding: 8 }}
+                    >
+                      <Ionicons name="close" size={24} color="#374151" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <FlatList
+                    data={items}
+                    keyExtractor={(item, index) => index.toString()}
+                    renderItem={renderItem}
+                    style={{ maxHeight: 400 }}
+                    showsVerticalScrollIndicator={true}
+                    contentContainerStyle={{
+                      paddingBottom: 8,
+                      paddingTop: 8,
+                    }}
+                  />
+                </View>
               </TouchableOpacity>
             </View>
-            
-            <FlatList
-              data={items}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={renderItem}
-              style={styles.list}
-              showsVerticalScrollIndicator={Platform.OS !== 'ios'}
-              contentContainerStyle={Platform.OS === 'ios' && {
-                paddingBottom: 20,
-              }}
-            />
-          </View>
-        </View>
+          </BlurView>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -180,66 +200,31 @@ const styles = StyleSheet.create({
     color: Platform.OS === 'web' ? '#6b7280' : '#9ca3af',
     fontSize: Platform.OS === 'web' ? 16 : Platform.OS === 'ios' ? 17 : 16,
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Platform.OS === 'android' ? 'rgba(0,0,0,0.5)' : 'transparent',
-    paddingHorizontal: 20,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    backdropFilter: 'blur(10px)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
-    maxHeight: '80%',
-    width: '100%',
-    maxWidth: 500,
-    zIndex: 2,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      }
-    }),
-  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#111827',
   },
   itemContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 15,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   itemText: {
     fontSize: 16,
-  },
-  list: {
-    // flex: 1, // This was causing the list to not render
   },
 });
 

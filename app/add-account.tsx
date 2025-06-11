@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ErrorModal from '../components/ErrorModal';
 import SuccessModal from '../components/SuccessModal';
@@ -86,88 +86,104 @@ const AddAccount = () => {
     }
   };
 
+  // Create a style for web inputs with additional properties
+  const webInputStyle = Platform.OS === 'web' ? {
+    height: 50,
+    outlineWidth: 0,
+    paddingTop: 12,
+    paddingBottom: 12,
+  } : {};
+
+  // Main content as a separate component for easy conditional rendering
+  const InnerContent = () => (
+    <View style={styles.innerContainer}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          Add Money Source
+        </Text>
+      </View>
+      
+      <ScrollView 
+        style={styles.scrollView}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 20 }}
+      >
+        {/* Account Name Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Money Source Name</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="E.g. Savings, Checking, etc."
+            placeholderTextColor="#9CA3AF"
+            style={[styles.textInput, webInputStyle]}
+          />
+        </View>
+
+        {/* Initial Balance Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Initial Balance</Text>
+          <TextInput
+            keyboardType="numeric"
+            value={balance}
+            onChangeText={(text) => {
+              const formatted = formatNumber(text);
+              setBalance(formatted);
+            }}
+            placeholder="E.g. 50.000, 1.000.000"
+            placeholderTextColor="#9CA3AF"
+            style={[styles.textInput, webInputStyle]}
+          />
+        </View>
+
+        {/* Submit Button */}
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={isLoading}
+          style={[
+            styles.submitButton,
+            isLoading && styles.submitButtonDisabled
+          ]}
+        >
+          {isLoading ? (
+            <>
+              <Ionicons name="hourglass-outline" size={20} color="white" />
+              <Text style={styles.buttonText}>Creating...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="save" size={20} color="white" />
+              <Text style={styles.buttonText}>Create Money Source</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView className="flex-1 bg-white">
+      <SafeAreaView style={styles.container}>
         <StatusBar backgroundColor="#FFFFFF" style="dark" />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View className="flex-1">
-              {/* Header */}
-              <View className="flex-row items-center px-4 pt-4 mb-6">
-                <TouchableOpacity
-                  onPress={() => router.back()}
-                  className="mr-4 p-2 bg-gray-100 rounded-full"
-                >
-                  <Ionicons name="arrow-back" size={24} color="#000" />
-                </TouchableOpacity>
-                <Text className="text-2xl font-bold flex-1 text-gray-800">
-                  Add Money Source
-                </Text>
-              </View>
-              
-              <ScrollView 
-                className="flex-1 px-4"
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 20 }}
-              >
-                {/* Account Name Input */}
-                <View className="mb-6">
-                  <Text className="text-gray-700 mb-2">Money Source Name</Text>
-                  <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="E.g. Savings, Checking, etc."
-                    placeholderTextColor="#9CA3AF"
-                    className="border border-gray-300 px-4 rounded-xl text-base text-gray-600 bg-white"
-                    style={{ paddingVertical: Platform.OS === 'ios' ? 16 : 12 }}
-                  />
-                </View>
-
-                {/* Initial Balance Input */}
-                <View className="mb-6">
-                  <Text className="text-gray-700 mb-2">Initial Balance</Text>
-                  <TextInput
-                    keyboardType="numeric"
-                    value={balance}
-                    onChangeText={(text) => {
-                      const formatted = formatNumber(text);
-                      setBalance(formatted);
-                    }}
-                    placeholder="E.g. 50.000, 1.000.000"
-                    placeholderTextColor="#9CA3AF"
-                    className="border border-gray-300 px-4 rounded-xl text-base text-gray-600 bg-white"
-                    style={{ paddingVertical: Platform.OS === 'ios' ? 16 : 12 }}
-                  />
-                </View>
-
-                {/* Submit Button */}
-                <TouchableOpacity
-                  onPress={handleSubmit}
-                  disabled={isLoading}
-                  className={`flex-row items-center justify-center py-4 rounded-xl ${
-                    isLoading ? 'bg-gray-400' : 'bg-blue-600'
-                  }`}
-                >
-                  {isLoading ? (
-                    <>
-                      <Ionicons name="hourglass-outline" size={20} color="white" />
-                      <Text className="text-white text-base font-semibold ml-2">Creating...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="save" size={20} color="white" />
-                      <Text className="text-white text-base font-semibold ml-2">Create Money Source</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </TouchableWithoutFeedback>
+          {Platform.OS === 'web' ? (
+            <InnerContent />
+          ) : (
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <InnerContent />
+            </TouchableWithoutFeedback>
+          )}
         </KeyboardAvoidingView>
         
         {/* Modals */}
@@ -190,5 +206,73 @@ const AddAccount = () => {
     </>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  innerContainer: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    marginBottom: 24,
+  },
+  backButton: {
+    padding: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 9999,
+    marginRight: 16,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  inputContainer: {
+    marginBottom: 24,
+  },
+  inputLabel: {
+    color: '#4b5563',
+    marginBottom: 8,
+    fontSize: 16,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 12,
+    fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: '#ffffff',
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#2563eb',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+});
 
 export default AddAccount;

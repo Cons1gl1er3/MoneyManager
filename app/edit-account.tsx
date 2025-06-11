@@ -3,11 +3,13 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, useColorScheme, View } from 'react-native';
+import { EventRegister } from 'react-native-event-listeners';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ConfirmModal from '../components/ConfirmModal';
 import ErrorModal from '../components/ErrorModal';
 import SuccessModal from '../components/SuccessModal';
 import { updateAccount } from '../lib/appwrite';
+import { TRANSACTION_UPDATED_EVENT } from '../lib/hooks/useTransactionActions';
 
 const EditAccount = () => {
   const router = useRouter();
@@ -25,6 +27,7 @@ const EditAccount = () => {
   // Parse account data from params
   const [accountData, setAccountData] = useState(null);
   const [originalInitialBalance, setOriginalInitialBalance] = useState('');
+  const [showInitialBalanceWarning, setShowInitialBalanceWarning] = useState(false);
   const [showBalanceConfirm, setShowBalanceConfirm] = useState(false);
 
   /**
@@ -43,23 +46,23 @@ const EditAccount = () => {
         setAccountData(account);
         setName(account.name);
         
-        // Handle initial_balance - fallback to balance or 0 if missing
-        let accountInitialBalance = 0;
+        // Chỉ lấy initial_balance, nếu không có thì để trống
+        let accountInitialBalance = '';
+        let showInitialBalanceWarning = false;
         if (account.initial_balance !== undefined && account.initial_balance !== null) {
-          accountInitialBalance = account.initial_balance;
-        } else if (account.balance !== undefined && account.balance !== null) {
-          accountInitialBalance = account.balance; // Fallback to current balance
-          console.log('initial_balance missing, using current balance as fallback');
+          accountInitialBalance = formatNumber(account.initial_balance.toString());
+        } else {
+          accountInitialBalance = '';
+          showInitialBalanceWarning = true;
         }
-        
-        const formattedInitialBalance = formatNumber(accountInitialBalance.toString());
-        setInitialBalance(formattedInitialBalance);
-        setOriginalInitialBalance(formattedInitialBalance);
+        setInitialBalance(accountInitialBalance);
+        setOriginalInitialBalance(accountInitialBalance);
+        setShowInitialBalanceWarning(showInitialBalanceWarning);
         
         console.log('Account loaded successfully:', {
           name: account.name,
           balance: account.balance,
-          initial_balance: accountInitialBalance
+          initial_balance: account.initial_balance
         });
       } catch (error) {
         console.error('Error parsing account data:', error);
@@ -135,6 +138,12 @@ const EditAccount = () => {
       const updatedAccount = await updateAccount(accountData.$id, {
         name: name.trim(),
         initial_balance: +rawInitialBalance,
+      });
+
+      // Emit event to notify that an account has been updated
+      EventRegister.emit(TRANSACTION_UPDATED_EVENT, {
+        action: 'account_update',
+        id: accountData.$id
       });
 
       setSavedAccount({
@@ -239,6 +248,11 @@ const EditAccount = () => {
                   <Text className="text-sm text-gray-500 mt-1">
                     The amount of money you had when you first created this account.
                   </Text>
+                  {showInitialBalanceWarning && (
+                    <Text className="text-xs text-red-500 mt-1">
+                      This account does not have an initial balance set. Please enter the original amount you had when creating this account.
+                    </Text>
+                  )}
                 </View>
 
                 {/* Save Button */}

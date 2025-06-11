@@ -10,6 +10,7 @@ interface ConfirmModalProps {
   cancelText?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  onDismiss?: () => void;
   confirmButtonColor?: string;
 }
 
@@ -21,6 +22,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   cancelText = "Cancel",
   onConfirm,
   onCancel,
+  onDismiss,
   confirmButtonColor = "#dc2626", // red color for destructive actions
 }) => {
   const styles = StyleSheet.create({
@@ -92,6 +94,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
       animationType="fade"
       statusBarTranslucent={true}
       onRequestClose={onCancel}
+      onDismiss={onDismiss}
     >
       <TouchableOpacity 
         activeOpacity={1}
@@ -123,16 +126,17 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </Text>
           
           <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              onPress={onCancel}
-              style={[styles.button, styles.cancelButton]}
-              activeOpacity={Platform.OS === 'ios' ? 0.6 : 0.7}
-            >
-              <Text style={styles.cancelButtonText}>
-                {cancelText}
-              </Text>
-            </TouchableOpacity>
-            
+            {cancelText ? (
+              <TouchableOpacity
+                onPress={onCancel}
+                style={[styles.button, styles.cancelButton]}
+                activeOpacity={Platform.OS === 'ios' ? 0.6 : 0.7}
+              >
+                <Text style={styles.cancelButtonText}>
+                  {cancelText}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               onPress={onConfirm}
               style={[styles.button, { backgroundColor: confirmButtonColor }]}

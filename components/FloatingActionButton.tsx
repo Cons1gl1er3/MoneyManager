@@ -48,13 +48,13 @@ const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({ currentRout
       }
     },
     {
-      title: 'Scan Receipt',
+      title: 'OCR Scan Receipt',
       icon: 'scan' as const,
       route: '/scan' as const,
       onPress: handleScanPress
     },
     {
-      title: 'Assistant',
+      title: 'AI-based Assistant',
       icon: 'chatbubble-ellipses' as const,
       route: '/chatbot' as const,
       onPress: () => {

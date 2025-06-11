@@ -243,6 +243,21 @@ const Accounts = () => {
           balance={selectedAccount?.balance}
           actions={[
             {
+              label: 'View Detail',
+              subtitle: 'View all transactions for this money source',
+              icon: 'eye',
+              color: '#0ea5e9',
+              onPress: () => {
+                if (selectedAccount) {
+                  setShowActionModal(false);
+                  router.push({
+                    pathname: '/account-transactions',
+                    params: { account: JSON.stringify(selectedAccount) }
+                  });
+                }
+              }
+            },
+            {
               label: 'Edit',
               subtitle: 'Update money source details',
               icon: 'pencil',

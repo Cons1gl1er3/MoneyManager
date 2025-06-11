@@ -2,15 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser } from '../lib/appwrite';
@@ -51,7 +51,7 @@ const ChatbotScreen = () => {
     setMessages([
       {
         id: '1',
-        text: "Hello! I'm your transaction assistant. How can I help you today?",
+        text: "Hello! I'm AoraAI, your AI-based transaction assistant. How can I help you today?",
         isUser: false,
         timestamp: new Date(),
       },
@@ -149,7 +149,7 @@ const ChatbotScreen = () => {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Platform.OS === 'ios' ? '#007AFF' : '#000'} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Transaction Assistant</Text>
+          <Text style={styles.headerTitle}>AI Assistant</Text>
         </View>
 
         <ScrollView

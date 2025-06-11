@@ -1,15 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { EventRegister } from 'react-native-event-listeners';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomPicker from '../components/CustomPicker';
 import ErrorModal from '../components/ErrorModal';
 import SuccessModal from '../components/SuccessModal';
 import TypeToggleButton from '../components/TypeToggleButton';
 import { getCategoriesByType, getUserAccounts, logTransaction } from '../lib/appwrite';
+import { TRANSACTION_UPDATED_EVENT } from '../lib/hooks/useTransactionActions';
 
 // Fallback income categories
 const fallbackIncomeCategories = [
@@ -341,6 +344,13 @@ const AddTransaction = () => {
         amount: payload.amount,
         type: payload.isIncome ? 'Income' : 'Expense'
       });
+      
+      // Emit event to notify that a transaction has been created
+      EventRegister.emit(TRANSACTION_UPDATED_EVENT, {
+        action: 'create',
+        id: result.transaction?.$id
+      });
+      
       setShowSuccessModal(true);
       
     } catch (error) {
@@ -506,58 +516,71 @@ const AddTransaction = () => {
         {/* Date Picker Modal for iOS */}
         {Platform.OS === 'ios' && (
           <Modal
-            animationType="slide"
+            animationType="fade"
             transparent={true}
             visible={showDatePicker}
             onRequestClose={() => setShowDatePicker(false)}
+            statusBarTranslucent={true}
           >
-            <View style={{
-              flex: 1,
-              justifyContent: 'flex-end',
-              backgroundColor: 'rgba(0,0,0,0.5)',
-            }}>
-              <View style={{
-                backgroundColor: '#ffffff',
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                paddingTop: 20,
-                paddingBottom: 40,
-                paddingHorizontal: 20,
-              }}>
-                <View style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 20,
+            <TouchableOpacity 
+              style={{ flex: 1 }} 
+              activeOpacity={1} 
+              onPress={() => setShowDatePicker(false)}
+            >
+              <BlurView intensity={30} style={{ flex: 1 }}>
+                <View style={{ 
+                  flex: 1, 
+                  backgroundColor: 'rgba(0,0,0,0.4)', 
+                  justifyContent: 'flex-end',
                 }}>
-                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
-                  </TouchableOpacity>
-                  <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937' }}>
-                    Select Date
-                  </Text>
-                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={{ color: '#2563eb', fontSize: 16, fontWeight: '600' }}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display="spinner"
-                  onChange={(event, date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                    }
-                  }}
-                  maximumDate={new Date()}
-                  textColor="#000000"
-                  style={{
+                  <View style={{
                     backgroundColor: '#ffffff',
-                    height: 200,
-                  }}
-                />
-              </View>
-            </View>
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                    paddingTop: 20,
+                    paddingBottom: 40,
+                    paddingHorizontal: 20,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: -4 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 8,
+                  }}>
+                    <View style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 20,
+                    }}>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
+                      </TouchableOpacity>
+                      <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937' }}>
+                        Select Date
+                      </Text>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={{ color: '#2563eb', fontSize: 16, fontWeight: '600' }}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={selectedDate}
+                      mode="date"
+                      display="spinner"
+                      onChange={(event, date) => {
+                        if (date) {
+                          setSelectedDate(date);
+                        }
+                      }}
+                      maximumDate={new Date()}
+                      textColor="#000000"
+                      style={{
+                        backgroundColor: '#ffffff',
+                        height: 200,
+                      }}
+                    />
+                  </View>
+                </View>
+              </BlurView>
+            </TouchableOpacity>
           </Modal>
         )}
 

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import { PieChart } from 'react-native-chart-kit';
 import { useIsFocused } from '@react-navigation/native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { EventRegister } from 'react-native-event-listeners';
 import ActionModal from '../../components/ActionModal';
 import BarChartComponent from '../../components/BarChart';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -16,6 +17,7 @@ import MonthSelector from '../../components/MonthSelector';
 import SuccessModal from '../../components/SuccessModal';
 import { useGlobalContext } from '../../context/GlobalProvider';
 import { deleteAccount, getCurrentUser, getTransactions, getUserAccounts } from '../../lib/appwrite';
+import { TRANSACTION_UPDATED_EVENT } from '../../lib/hooks/useTransactionActions';
 
 interface NavButtonProps {
   icon: keyof typeof IconType.glyphMap;
@@ -466,6 +468,23 @@ const Home: React.FC = () => {
     debugTouchIssue();
   }, [accounts, showActionModal, showDatePicker]);
 
+  // Listen for transaction update events
+  useEffect(() => {
+    const listener = EventRegister.addEventListener(
+      TRANSACTION_UPDATED_EVENT, 
+      (data) => {
+        console.log('Home: Received transaction update event:', data);
+        if (userID) {
+          manualRefresh();
+        }
+      }
+    ) as string;
+    
+    return () => {
+      EventRegister.removeEventListener(listener);
+    };
+  }, [userID]);
+
       return (
     <View className="bg-gray-50 flex-1">
       {/* Header */}
@@ -681,15 +700,26 @@ const Home: React.FC = () => {
                       <Ionicons name={getAccountIcon(account.name)} size={20} color="#059669" />
                     </View>
                     
-                    {/* Balance */}
-                    <Text style={{
-                      fontSize: 20,
-                      fontWeight: 'bold',
-                      marginBottom: 8,
-                      color: isNegativeBalance ? '#ef4444' : '#059669'
-                    }}>
-                      {formatVND(account.balance)}
-                    </Text>
+                    {/* Balance - Fixed for Android */}
+                    <View>
+                      <Text style={{
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        color: isNegativeBalance ? '#ef4444' : '#059669'
+                      }}>
+                        {new Intl.NumberFormat('vi-VN', {
+                          maximumFractionDigits: 0,
+                        }).format(account.balance)}
+                      </Text>
+                      <Text style={{
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color: isNegativeBalance ? '#ef4444' : '#059669',
+                        marginBottom: 4
+                      }}>
+                        VNĐ
+                      </Text>
+                    </View>
                     
                     {/* Transaction count */}
                     <Text style={{
@@ -771,6 +801,21 @@ const Home: React.FC = () => {
         title={selectedAccount?.name || ''}
         balance={selectedAccount?.balance}
         actions={[
+          {
+            label: 'View Detail',
+            subtitle: 'View all transactions for this money source',
+            icon: 'eye',
+            color: '#0ea5e9',
+            onPress: () => {
+              if (selectedAccount) {
+                setShowActionModal(false);
+                router.push({
+                  pathname: '/account-transactions',
+                  params: { account: JSON.stringify(selectedAccount) }
+                });
+              }
+            }
+          },
           {
             label: 'Edit',
             subtitle: 'Update money source details',

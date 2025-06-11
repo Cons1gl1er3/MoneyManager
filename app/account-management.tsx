@@ -22,7 +22,7 @@ interface User {
 
 const AccountManagement = () => {
   const router = useRouter();
-  const { user: globalUser, setUser: setGlobalUser } = useGlobalContext();
+  const { user: globalUser, setUser: setGlobalUser, logoutUser } = useGlobalContext();
   const [user, setUser] = useState<User | null>(globalUser as User);
   const [newUsername, setNewUsername] = useState(user?.username || '');
   const [isEditing, setIsEditing] = useState(false);
@@ -75,7 +75,7 @@ const AccountManagement = () => {
           const updatedUser = await updateUserProfile(user?.$id, {
             avatar: url
           });
-          console.log('Profile updated successfully');
+          console.log('Profile updated successfully!');
 
           // Update local state
           setUser(updatedUser as unknown as User);
@@ -92,14 +92,14 @@ const AccountManagement = () => {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      setErrorModalMessage('Failed to pick image');
+      setErrorModalMessage('Failed to pick image!');
       setErrorModalVisible(true);
     }
   };
 
   const handleUpdateUsername = async () => {
     if (!newUsername.trim()) {
-      setErrorModalMessage('Username cannot be empty');
+      setErrorModalMessage('Username cannot be empty!');
       setErrorModalVisible(true);
       return;
     }
@@ -114,11 +114,11 @@ const AccountManagement = () => {
       setUser(updatedUser as unknown as User);
       setGlobalUser(updatedUser as unknown as User);
       setIsEditing(false);
-      setSuccessModalMessage('Username updated successfully');
+      setSuccessModalMessage('Username updated successfully!');
       setSuccessModalVisible(true);
     } catch (error) {
       console.error('Error updating username:', error);
-      setErrorModalMessage('Failed to update username');
+      setErrorModalMessage('Failed to update username!');
       setErrorModalVisible(true);
     } finally {
       setLoading(false);
@@ -139,7 +139,7 @@ const AccountManagement = () => {
       setOldPassword('');
       setNewPassword('');
     } catch (error) {
-      setErrorModalMessage(error.message || 'Failed to change password');
+      setErrorModalMessage(error.message || 'Failed to change password!');
       setErrorModalVisible(true);
     } finally {
       setChangingPassword(false);
@@ -193,7 +193,7 @@ const AccountManagement = () => {
               </TouchableOpacity>
               
               <Text className="text-gray-500 mt-4 text-center">
-                Tap the camera icon to change your profile picture
+                Tap the camera icon to change your profile picture!
               </Text>
             </View>
           </View>
@@ -247,7 +247,7 @@ const AccountManagement = () => {
               {user?.email}
             </Text>
             <Text className="text-gray-500 mt-2">
-              Email cannot be changed
+              Email cannot be changed!
             </Text>
           </View>
 
@@ -262,9 +262,10 @@ const AccountManagement = () => {
                 className="border border-gray-300 rounded-lg px-4 py-2"
                 value={oldPassword}
                 onChangeText={setOldPassword}
-                placeholder="Enter current password"
+                placeholder="Enter current password..."
                 secureTextEntry
                 autoCapitalize="none"
+                placeholderTextColor="#9ca3af"
               />
             </View>
             <View className="mb-4">
@@ -273,9 +274,10 @@ const AccountManagement = () => {
                 className="border border-gray-300 rounded-lg px-4 py-2"
                 value={newPassword}
                 onChangeText={setNewPassword}
-                placeholder="Enter new password"
+                placeholder="Enter new password..."
                 secureTextEntry
                 autoCapitalize="none"
+                placeholderTextColor="#9ca3af"
               />
             </View>
             <TouchableOpacity

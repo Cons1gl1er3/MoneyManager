@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ErrorModal from '../components/ErrorModal';
 import { getCategoriesByType, getUserAccounts, logTransaction } from '../lib/appwrite';
 
 // Import mock data directly
@@ -40,12 +41,14 @@ const ReceiptLogConfirmation = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const theme = useColorScheme();
-  const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
+  const backgroundColor = theme === 'dark' ? '#121212' : '#F9FAFB';
   const [rawTransactions, setRawTransactions] = useState<RawTransaction[]>([]);
   const [processedTransactions, setProcessedTransactions] = useState<ProcessedTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Load initial data
   useEffect(() => {
@@ -82,28 +85,33 @@ const ReceiptLogConfirmation = () => {
           setRawTransactions(mockData.transactions);
 
           // Process transactions by matching names to IDs and force all to expense type
-          const processed = mockData.transactions.map((transaction: RawTransaction) => {
+          const processed = [];
+          for (const transaction of mockData.transactions) {
             const account = userAccounts.find(acc => acc.name === transaction.accountName);
             const category = expenseCategories.find(cat => cat.name === transaction.categoryName);
 
             if (!account || !category) {
-              throw new Error(`Could not find matching account or category for transaction: ${transaction.name}`);
+              setErrorMessage(`Could not find matching account or category for transaction: ${transaction.name}`);
+              setErrorModalVisible(true);
+              setIsLoading(false);
+              return;
             }
 
-            return {
+            processed.push({
               ...transaction,
               type: 'expense' as const, // Force all OCR transactions to be expense
               accountId: account.$id,
               categoryId: category.$id
-            };
-          });
+            });
+          }
 
           setProcessedTransactions(processed);
         }
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
-        alert('Error loading transactions. Please try again.');
+        setErrorMessage('Error loading transactions. Please try again.');
+        setErrorModalVisible(true);
       }
     };
 
@@ -143,8 +151,14 @@ const ReceiptLogConfirmation = () => {
       router.push('/home');
     } catch (error) {
       console.error('Error logging transactions:', error);
-      alert('An error occurred while logging the transactions.');
+      setErrorMessage('An error occurred while logging the transactions.');
+      setErrorModalVisible(true);
     }
+  };
+
+  const handleErrorModalClose = () => {
+    setErrorModalVisible(false);
+    router.back();
   };
 
   if (isLoading) {
@@ -213,6 +227,13 @@ const ReceiptLogConfirmation = () => {
           <Text className="text-white text-base font-semibold ml-2">Confirm All Transactions</Text>
         </TouchableOpacity>
       </View>
+
+      <ErrorModal
+        visible={errorModalVisible}
+        onClose={handleErrorModalClose}
+        message={errorMessage}
+        title="Transaction Error"
+      />
     </SafeAreaView>
   );
 };

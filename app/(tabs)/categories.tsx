@@ -3,12 +3,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { EventRegister } from 'react-native-event-listeners';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DatePickerModal from '../../components/DatePickerModal';
 import ErrorModal from '../../components/ErrorModal';
 import FloatingActionButton from '../../components/FloatingActionButton';
 import MonthSelector from '../../components/MonthSelector';
 import { getCategories, getCurrentUser, getTransactions } from '../../lib/appwrite';
+import { TRANSACTION_UPDATED_EVENT } from '../../lib/hooks/useTransactionActions';
 // import PieChartComponent from '../../components/PieChart';
 
 const screenWidth = Dimensions.get("window").width;
@@ -248,6 +250,23 @@ const Categories = () => {
       }
     }, [userID])
   );
+  
+  // Listen for transaction update events
+  useEffect(() => {
+    const listener = EventRegister.addEventListener(
+      TRANSACTION_UPDATED_EVENT, 
+      (data) => {
+        console.log('Categories: Received update event:', data);
+        if (userID) {
+          fetchTransactions();
+        }
+      }
+    ) as string;
+    
+    return () => {
+      EventRegister.removeEventListener(listener);
+    };
+  }, [userID]);
 
   // Create chart data for pie chart (if enabled)
   const chartData = categorySpending.map((item) => ({
