@@ -1,48 +1,58 @@
-import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   Platform,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useColorScheme,
+  useColorScheme
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ErrorModal from '../components/ErrorModal';
+import { getCurrentUser } from '../lib/appwrite';
+
+// Constants
+const OCR_ENDPOINT = 'https://655d-2405-4802-1bf0-e410-cccc-bd1d-5a1c-30c2.ngrok-free.app/process-receipt';
+const WEBHOOK_URL = 'https://n8n-production-b59a.up.railway.app/webhook/1d7f79fc-3bd7-46eb-8d02-c13be6cba965';
 
 const ScanReceiptScreen = () => {
   const [image, setImage] = useState<string | null>(null);
   const [showWebError, setShowWebError] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const theme = useColorScheme();
+  const backgroundColor = theme === 'dark' ? '#000000' : '#FFFFFF';
   const router = useRouter();
-  
-  // Inline theme colors instead of using the external hook
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = colorScheme;
-  
-  // Main colors
-  const background = isDark ? '#121212' : '#F9FAFB';
-  const primaryText = isDark ? '#F3F4F6' : '#111827';
-  const secondaryText = isDark ? '#D1D5DB' : '#4B5563'; 
-  const noteText = isDark ? '#9CA3AF' : '#6B7280';
-  
-  // Card & UI colors
-  const cardBackground = isDark ? '#1F2937' : '#EBF5FF';
-  const buttonText = '#FFFFFF';
-  
-  // Button colors
-  const primaryButtonBg = '#2563EB';
-  const successButtonBg = '#10B981';
-  const cancelButtonBg = isDark ? '#374151' : '#E5E7EB';
 
-  const handleOpenCamera = async () => {
+  // Fetch user ID when component mounts
+  useEffect(() => {
+    const fetchUserId = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          setUserId(user.$id);
+        }
+      } catch (error) {
+        console.error('Error fetching user ID:', error);
+      }
+    };
+
+    fetchUserId();
+  }, []);
+
+  // Check if user is on web and show error
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      setShowWebError(true);
+    }
+  }, []);
+
+  const openCamera = async () => {
     if (Platform.OS === 'web') {
       setShowWebError(true);
       return;
@@ -54,39 +64,154 @@ const ScanReceiptScreen = () => {
       return;
     }
 
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+      console.log('📸 Captured image URI:', result.assets[0].uri);
+    }
+  };
+
+  const uploadImage = async () => {
+    if (Platform.OS === 'web') {
+      setShowWebError(true);
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Permission to access media library is required!');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+      console.log('📸 Selected image URI:', result.assets[0].uri);
+    }
+  };
+
+  const processImage = async () => {
+    if (!image || !userId) return;
+
+    setIsProcessing(true);
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 1,
+      // Convert image to JPG if it's JPEG
+      let processedImageUri = image;
+      if (image.toLowerCase().endsWith('.jpeg')) {
+        const fileInfo = await FileSystem.getInfoAsync(image);
+        if (fileInfo.exists) {
+          const newUri = image.replace('.jpeg', '.jpg');
+          await FileSystem.moveAsync({
+            from: image,
+            to: newUri
+          });
+          processedImageUri = newUri;
+        }
+      }
+
+      // First, send image to OCR server
+      const formData = new FormData();
+      
+      // Get file extension from URI
+      const fileExtension = processedImageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = 'image/jpg';
+      
+      const imageData = {
+        uri: processedImageUri,
+        type: mimeType,
+        name: `receipt.${fileExtension}`,
+      } as any;
+      formData.append('file', imageData);
+
+      console.log('📸 Preparing image for OCR:', {
+        uri: processedImageUri,
+        type: imageData.type,
+        name: imageData.name,
+        fileExtension,
+        formData: formData
       });
 
-      if (!result.canceled && result.assets.length > 0) {
-        const uri = result.assets[0].uri;
-        setIsProcessing(true);
-        setTimeout(() => {
-          setImage(uri);
-          setIsProcessing(false);
-        }, 1500);
+      const ocrResponse = await fetch(OCR_ENDPOINT, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      console.log('📸 OCR Response:', ocrResponse);
+
+      if (!ocrResponse.ok) {
+        const errorText = await ocrResponse.text();
+        console.error('OCR Server Error:', {
+          status: ocrResponse.status,
+          statusText: ocrResponse.statusText,
+          headers: Object.fromEntries(ocrResponse.headers.entries()),
+          body: errorText
+        });
+        throw new Error(`Failed to process image with OCR: ${ocrResponse.status} ${ocrResponse.statusText}`);
       }
+
+      const ocrResult = await ocrResponse.json();
+      console.log('📝 OCR Result:', ocrResult);
+
+      // Validate OCR response structure
+      if (!ocrResult.status || ocrResult.status !== 'success') {
+        throw new Error('Invalid OCR response format');
+      }
+
+      // Then, send the OCR result to the webhook
+      const webhookResponse = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Origin: 'exp://192.168.1.3:8081',
+        },
+        body: JSON.stringify({
+          ocrResult,
+          timestamp: new Date().toISOString(),
+          userId,
+        }),
+      });
+
+      if (!webhookResponse.ok) {
+        const errorText = await webhookResponse.text();
+        console.error('Webhook Error:', {
+          status: webhookResponse.status,
+          statusText: webhookResponse.statusText,
+          headers: Object.fromEntries(webhookResponse.headers.entries()),
+          body: errorText
+        });
+        throw new Error(`Failed to process OCR result: ${webhookResponse.status} ${webhookResponse.statusText}`);
+      }
+
+      const webhookData = await webhookResponse.json();
+      console.log('📝 Webhook Response:', JSON.stringify(webhookData, null, 2));
+      
+      // Navigate to confirmation page with webhook response data
+      router.push({
+        pathname: '/receipt-log-confirmation',
+        params: { 
+          ocrData: JSON.stringify(webhookData)
+        }
+      });
     } catch (error) {
-      console.error('Camera error:', error);
-      alert('Failed to open camera. Please try again.');
+      console.error('Error processing image:', error);
+      alert(`Failed to process image: ${(error as Error).message}. Please try again.`);
+    } finally {
+      setIsProcessing(false);
     }
-  };
-
-  const handleConfirm = () => {
-    if (image) {
-      router.push('/receipt-log-confirmation');
-    }
-  };
-
-  const handleRetakePhoto = () => {
-    setImage(null);
-    handleOpenCamera();
-  };
-
-  const handleCancel = () => {
-    router.back();
   };
 
   const handleWebErrorClose = () => {
@@ -94,168 +219,69 @@ const ScanReceiptScreen = () => {
     router.back();
   };
 
-  const renderWelcomeScreen = () => (
-    <View style={styles.containerContent}>
-      <View style={[styles.iconContainer, { backgroundColor: cardBackground }]}>
-        <Ionicons name="scan-outline" size={64} color={primaryButtonBg} />
-      </View>
-
-      <Text style={[styles.title, { color: primaryText }]}>Scan Your Receipt</Text>
-      <Text style={[styles.description, { color: secondaryText }]}>
-        Use your camera to scan a receipt and automatically log expense transactions.
-      </Text>
-      <Text style={[styles.note, { color: noteText }]}>
-        Note: OCR only supports expense transactions
-      </Text>
-
-      <TouchableOpacity style={styles.cameraButton} onPress={handleOpenCamera}>
-        <Ionicons name="camera" size={20} color={buttonText} style={styles.iconSpacing} />
-        <Text style={[styles.buttonText, { color: buttonText }]}>Open Camera</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-        <Text style={[styles.cancelText, { color: noteText }]}>Cancel</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderImagePreview = () => (
-    <View style={styles.containerContent}>
-      <Image source={{ uri: image }} style={styles.previewImage} />
-
-      <View style={styles.buttonGroup}>
-        <TouchableOpacity style={styles.retakeButton} onPress={handleRetakePhoto}>
-          <Ionicons name="camera" size={20} color={buttonText} style={styles.iconSpacing} />
-          <Text style={[styles.buttonText, { color: buttonText }]}>Retake Photo</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
-          <Ionicons name="checkmark" size={20} color={buttonText} style={styles.iconSpacing} />
-          <Text style={[styles.buttonText, { color: buttonText }]}>Confirm</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderProcessing = () => (
-    <View style={styles.containerContent}>
-      <ActivityIndicator size="large" color={primaryButtonBg} />
-      <Text style={[styles.processingText, { color: secondaryText }]}>
-        Processing receipt...
-      </Text>
-    </View>
-  );
-
-  // Định nghĩa styles sau khi đã khai báo các biến màu sắc
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    containerContent: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 24,
-    },
-    iconContainer: {
-      marginBottom: 20,
-      padding: 20,
-      borderRadius: 50,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      marginBottom: 16,
-      textAlign: 'center',
-    },
-    description: {
-      fontSize: 16,
-      textAlign: 'center',
-      marginBottom: 12,
-      lineHeight: 24,
-    },
-    note: {
-      fontSize: 14,
-      textAlign: 'center',
-      marginBottom: 32,
-      fontStyle: 'italic',
-    },
-    cameraButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: primaryButtonBg,
-      paddingVertical: 14,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-      marginBottom: 16,
-      width: '100%',
-      maxWidth: 300,
-    },
-    cancelButton: {
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-    },
-    cancelText: {
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    iconSpacing: {
-      marginRight: 8,
-    },
-    buttonText: {
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    previewImage: {
-      width: 280,
-      height: 280,
-      borderRadius: 16,
-      marginBottom: 32,
-    },
-    buttonGroup: {
-      width: '100%',
-      maxWidth: 300,
-    },
-    retakeButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: primaryButtonBg,
-      paddingVertical: 14,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-      marginBottom: 16,
-      width: '100%',
-    },
-    confirmButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: successButtonBg,
-      paddingVertical: 14,
-      paddingHorizontal: 24,
-      borderRadius: 12,
-      width: '100%',
-    },
-    processingText: {
-      marginTop: 16,
-      fontSize: 16,
-    },
-  });
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: background }]}>
-      {isProcessing ? renderProcessing() : image ? renderImagePreview() : renderWelcomeScreen()}
+    <SafeAreaView className="flex-1 h-full">
+      <View className="flex-1 items-center justify-center bg-white dark:bg-black px-4">
+        {Platform.OS !== 'web' && (
+          <>
+            {image ? (
+              <Image source={{ uri: image }} className="w-64 h-64 rounded-xl mb-6" />
+            ) : (
+              <Text className="text-gray-800 dark:text-gray-200 mb-6 text-lg text-center">
+                Scan Your Receipt Now.
+                {'\n\n'}📄 OCR only supports expense transactions
+              </Text>
+            )}
 
+            <View className="flex-row gap-4 mb-4">
+              <TouchableOpacity
+                onPress={openCamera}
+                className="bg-blue-600 px-6 py-3 rounded-xl shadow-md flex-1"
+                disabled={isProcessing}
+              >
+                <Text className="text-white font-semibold text-base text-center">
+                  {image ? 'Retake Photo' : 'Take Photo'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={uploadImage}
+                className="bg-blue-600 px-6 py-3 rounded-xl shadow-md flex-1"
+                disabled={isProcessing}
+              >
+                <Text className="text-white font-semibold text-base text-center">
+                  Upload Image
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {image && (
+              <TouchableOpacity
+                onPress={processImage}
+                className="bg-green-600 px-6 py-3 rounded-xl shadow-md w-full"
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-white font-semibold text-base text-center">Process Receipt</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Error Modal for Web */}
       <ErrorModal
         visible={showWebError}
-        message="OCR feature is not supported on web platform. Please use the mobile app to scan receipts and add expense transactions automatically."
+        message="📱 OCR feature is not supported on web platform.
+
+Please use the mobile app to scan receipts and add expense transactions automatically."
         onClose={handleWebErrorClose}
       />
 
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      <StatusBar backgroundColor={backgroundColor} style={theme === 'dark' ? 'light' : 'dark'} />
     </SafeAreaView>
   );
 };

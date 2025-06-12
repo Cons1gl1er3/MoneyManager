@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomPicker from '../components/CustomPicker';
+import ErrorModal from '../components/ErrorModal';
+import SuccessModal from '../components/SuccessModal';
 import { getCategoriesByType, getUserAccounts } from '../lib/appwrite';
 
 interface Transaction {
@@ -25,6 +30,8 @@ interface Transaction {
   categoryName: string;
   date: string;
   note: string;
+  accountId?: string;
+  categoryId?: string;
 }
 
 const EditOcrTransaction = () => {
@@ -41,10 +48,29 @@ const EditOcrTransaction = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [originalTransaction, setOriginalTransaction] = useState<Transaction | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const theme = useColorScheme();
   const isDarkMode = theme === 'dark';
   const backgroundColor = isDarkMode ? '#000000' : '#FFFFFF';
+
+  // Format number with thousand separators
+  const formatNumber = (text: string) => {
+    return text.replace(/[^0-9]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  };
+
+  // Format amount to VND
+  const formatVND = (amount: number): string => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    })
+      .format(amount)
+      .replace('₫', 'VNĐ');
+  };
 
   // Load categories based on transaction type
   const loadCategories = async (transactionType: 'income' | 'expense') => {
@@ -108,220 +134,242 @@ const EditOcrTransaction = () => {
   }, [categories, originalTransaction]);
 
   const handleSave = () => {
-    if (!selectedAccount || !selectedCategory || !amount || isNaN(parseFloat(amount))) {
-      alert('Please fill all fields correctly.');
+    if (!name || !amount || !selectedAccount || !selectedCategory) {
+      setErrorMessage('Please fill in all required fields');
+      setErrorModalVisible(true);
       return;
     }
 
-    // Find the account and category names for the selected IDs
-    const account = accounts.find(acc => acc.$id === selectedAccount);
-    const category = categories.find(cat => cat.$id === selectedCategory);
-
-    if (!account || !category) {
-      alert('Invalid account or category selection.');
-      return;
-    }
-
-    // Create the updated transaction object
     const updatedTransaction = {
+      ...originalTransaction,
       name,
-      amount: parseFloat(amount),
-      type,
-      accountName: account.name,
-      categoryName: category.name,
-      date: selectedDate.toISOString(),
-      note,
+      amount: parseFloat(amount.replace(/\./g, '')),
+      type: 'expense',
       accountId: selectedAccount,
-      categoryId: selectedCategory
+      categoryId: selectedCategory,
+      note,
+      date: selectedDate.toISOString()
     };
 
-    // Return to the confirmation page with the updated transaction
-    router.back();
-    // Use setTimeout to ensure the navigation completes before setting params
-    setTimeout(() => {
-      router.setParams({ 
+    // Navigate back to confirmation page with updated transaction
+    router.push({
+      pathname: '/receipt-log-confirmation',
+      params: {
         editedTransaction: JSON.stringify(updatedTransaction),
         editedIndex: params.index
-      });
-    }, 100);
+      }
+    });
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#fff',
+      ...(Platform.OS === 'web' && {
+        maxWidth: 800,
+        alignSelf: 'center',
+        width: '100%',
+      }),
+    },
+    scrollContainer: {
+      flexGrow: 1,
+      paddingHorizontal: Platform.OS === 'web' ? 24 : 16,
+      paddingTop: Platform.OS === 'web' ? 16 : 24,
+      paddingBottom: Platform.OS === 'web' ? 40 : 100,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Platform.OS === 'web' ? 20 : 24,
+    },
+    backButton: {
+      padding: 8,
+      backgroundColor: '#e5e7eb',
+      borderRadius: 8,
+      marginRight: 12,
+      ...(Platform.OS === 'web' && { cursor: 'pointer' }),
+    },
+    title: {
+      fontSize: Platform.OS === 'web' ? 28 : 24,
+      fontWeight: 'bold',
+      color: '#1f2937',
+    },
+    label: {
+      color: '#374151',
+      marginBottom: 8,
+      fontSize: Platform.OS === 'web' ? 16 : 14,
+      fontWeight: '500',
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      fontSize: 16,
+      backgroundColor: '#fff',
+      marginBottom: Platform.OS === 'web' ? 20 : 24,
+      color: '#000',
+    },
+    pickerContainer: {
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+      borderRadius: 12,
+      backgroundColor: '#fff',
+      marginBottom: Platform.OS === 'web' ? 20 : 16,
+    },
+    dateButton: {
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: Platform.OS === 'web' ? 14 : 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: Platform.OS === 'web' ? 28 : 24,
+      backgroundColor: '#fff',
+      ...(Platform.OS === 'web' && { cursor: 'pointer' }),
+      ...(Platform.OS === 'ios' && {
+        minHeight: 50,
+      }),
+    },
+    dateText: {
+      fontSize: Platform.OS === 'web' ? 16 : 16,
+      color: '#000000',
+      flex: 1,
+    },
+    submitButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+      paddingVertical: 16,
+      marginBottom: Platform.OS === 'web' ? 20 : 32,
+      ...(Platform.OS === 'web' && { cursor: 'pointer' }),
+    },
+    submitText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+      marginLeft: 8,
+    },
+  });
+
   return (
-    <SafeAreaView style={[styles.flex1, { backgroundColor }]}>
-      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      <ScrollView 
-        style={styles.flex1}
-        contentContainerStyle={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
-      >
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <StatusBar style="dark" />
+        
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? "#fff" : "#000"} />
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={20} color="#374151" />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: isDarkMode ? '#fff' : '#000' }]}>Edit Transaction</Text>
+          <Text style={styles.title}>Edit Transaction</Text>
         </View>
 
-        {/* Transaction Name Input */}
-        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Transaction Name</Text>
+        <Text style={styles.label}>Transaction Name *</Text>
         <TextInput
+          style={styles.input}
           value={name}
           onChangeText={setName}
           placeholder="Enter transaction name"
-          placeholderTextColor={isDarkMode ? '#718096' : '#a0aec0'}
-          style={[styles.input, { 
-            backgroundColor: isDarkMode ? '#1a202c' : '#fff',
-            color: isDarkMode ? '#fff' : '#000',
-            borderColor: isDarkMode ? '#4a5568' : '#d1d5db'
-          }]}
+          placeholderTextColor="#9ca3af"
         />
 
-        {/* Amount Input */}
-        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Amount</Text>
+        <Text style={styles.label}>Amount *</Text>
         <TextInput
-          keyboardType="numeric"
+          style={styles.input}
           value={amount}
-          onChangeText={setAmount}
-          placeholder="Enter amount"
-          placeholderTextColor={isDarkMode ? '#718096' : '#a0aec0'}
-          style={[styles.input, { 
-            backgroundColor: isDarkMode ? '#1a202c' : '#fff',
-            color: isDarkMode ? '#fff' : '#000',
-            borderColor: isDarkMode ? '#4a5568' : '#d1d5db',
-            marginBottom: 16
-          }]}
+          onChangeText={(text) => setAmount(formatNumber(text))}
+          placeholder="0"
+          keyboardType="numeric"
+          placeholderTextColor="#9ca3af"
         />
 
-        {/* Account Selection */}
         <CustomPicker
-          label="Select Account"
-          items={accounts.map((account) => ({ label: account.name, value: account.$id }))}
+          label="Select Money Source *"
+          items={accounts.map((acc) => ({ label: acc.name, value: acc.$id }))}
           selectedValue={selectedAccount}
-          onValueChange={(itemValue) => setSelectedAccount(itemValue)}
+          onValueChange={setSelectedAccount}
           placeholder="Choose an account"
         />
 
-        {/* Category Selection */}
         <CustomPicker
-          label="Select Category"
-          items={categories.map((category) => ({ label: category.name, value: category.$id }))}
+          label="Select Category *"
+          items={categories.map((cat) => ({ label: cat.name, value: cat.$id }))}
           selectedValue={selectedCategory}
-          onValueChange={(itemValue) => setSelectedCategory(itemValue)}
+          onValueChange={setSelectedCategory}
           placeholder="Choose a category"
         />
 
-        {/* Note Input */}
-        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Note (optional)</Text>
+        <Text style={styles.label}>Date *</Text>
+        <TouchableOpacity
+          style={styles.dateButton}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={styles.dateText}>
+            {selectedDate.toLocaleDateString('vi-VN', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </Text>
+          <Ionicons name="calendar-outline" size={20} color="#374151" />
+        </TouchableOpacity>
+
+        <Text style={styles.label}>Note</Text>
         <TextInput
+          style={styles.input}
           value={note}
           onChangeText={setNote}
-          placeholder="E.g. Dinner, Freelance, etc."
-          placeholderTextColor={isDarkMode ? '#718096' : '#a0aec0'}
-          style={[styles.input, { 
-            backgroundColor: isDarkMode ? '#1a202c' : '#fff',
-            color: isDarkMode ? '#fff' : '#000',
-            borderColor: isDarkMode ? '#4a5568' : '#d1d5db'
-          }]}
+          placeholder="Add a note (optional)"
+          placeholderTextColor="#9ca3af"
+          multiline
         />
 
-        {/* Date Selection */}
-        <Text style={[styles.label, { color: isDarkMode ? '#a0aec0' : '#4a5568' }]}>Transaction Date</Text>
         <TouchableOpacity
-          onPress={() => setShowDatePicker(true)}
-          style={[styles.dateButton, { borderColor: isDarkMode ? '#4a5568' : '#d1d5db' }]}
-        >
-          <Text style={{ color: isDarkMode ? '#cbd5e0' : '#4a5568' }}>{selectedDate.toLocaleDateString()}</Text>
-        </TouchableOpacity>
-        {showDatePicker && (
-          <DateTimePicker
-            value={selectedDate}
-            mode="date"
-            display="default"
-            onChange={(event, date) => {
-              setShowDatePicker(false);
-              if (date) setSelectedDate(date);
-            }}
-          />
-        )}
-
-        {/* Save Button */}
-        <TouchableOpacity
+          style={[styles.submitButton, { backgroundColor: '#10B981' }]}
           onPress={handleSave}
-          style={styles.saveButton}
         >
-          <Ionicons name="save" size={20} color="white" />
-          <Text style={styles.saveButtonText}>Save Changes</Text>
+          <Ionicons name="save-outline" size={20} color="#fff" />
+          <Text style={styles.submitText}>Save Changes</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {showDatePicker && (
+        <Modal transparent animationType="fade">
+          <BlurView intensity={20} style={StyleSheet.absoluteFill}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <View style={{ backgroundColor: '#fff', padding: 20, borderRadius: 12 }}>
+                <DateTimePicker
+                  value={selectedDate}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event, date) => {
+                    setShowDatePicker(false);
+                    if (date) setSelectedDate(date);
+                  }}
+                />
+              </View>
+            </View>
+          </BlurView>
+        </Modal>
+      )}
+
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => router.back()}
+        message="Transaction updated successfully"
+      />
+
+      <ErrorModal
+        visible={errorModalVisible}
+        onClose={() => setErrorModalVisible(false)}
+        message={errorMessage}
+      />
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  flex1: {
-    flex: 1,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 16,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  header: {
-    position: 'absolute',
-    top: 10,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 10
-  },
-  backButton: {
-    position: 'absolute',
-    top: 5,
-    left: 0,
-    padding: 8,
-    zIndex: 1,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    flex: 1,
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  input: {
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 24,
-    fontSize: 16,
-  },
-  dateButton: {
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 28,
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563eb',
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-});
 
 export default EditOcrTransaction; 

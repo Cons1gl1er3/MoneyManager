@@ -187,7 +187,7 @@ const ChatbotScreen = () => {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
         style={styles.flex}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0} 
       >
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
